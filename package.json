@@ -1,0 +1,25 @@
+{
+  "name": "beav3r-sdk-repo",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Standalone source repo for the public Beav3r SDK and protocol packages.",
+  "license": "MIT",
+  "packageManager": "npm@11.6.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beav3r-ai/beav3r-sdk.git"
+  },
+  "workspaces": [
+    "packages/protocol",
+    "packages/sdk"
+  ],
+  "scripts": {
+    "build:packages": "npm run --workspace @beav3r/protocol build && npm run --workspace @beav3r/sdk build",
+    "version-packages": "changeset version",
+    "release-packages": "changeset publish"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.29.6",
+    "typescript": "^5.8.2"
+  }
+}

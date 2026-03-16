@@ -1,0 +1,35 @@
+{
+  "name": "@beav3r/protocol",
+  "version": "1.0.0",
+  "description": "Shared Beav3r protocol schemas, canonicalization, and action hashing.",
+  "license": "MIT",
+  "private": false,
+  "type": "commonjs",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "prepack": "npm run build"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beav3r-ai/beav3r.git",
+    "directory": "packages/protocol"
+  },
+  "homepage": "https://beav3r.ai"
+}
