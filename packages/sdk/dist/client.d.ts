@@ -3,7 +3,7 @@ type RegisterDeviceInput = DeviceInput & {
     secretKeyBase64?: string;
     pairingToken?: string;
 };
-export type BeaverClientOptions = {
+export type Beav3rOptions = {
     baseUrl: string;
     agentId?: string;
     apiKey?: string;
@@ -114,14 +114,14 @@ export type ListRecentActionsOptions = {
 export type ListPolicyRulesOptions = {
     agentId?: string;
 };
-export declare class BeaverDeniedError extends Error {
+export declare class Beav3rDeniedError extends Error {
     readonly actionId: string;
     constructor(actionId: string, reason?: string);
 }
-export declare class BeaverClient {
+export declare class Beav3r {
     private readonly options;
     private readonly fetchImpl;
-    constructor(options: BeaverClientOptions);
+    constructor(options: Beav3rOptions);
     requestAction(input: RequestActionInput): Promise<ActionRequestResult>;
     relayAction(input: RelayActionInput): Promise<PendingActionResult>;
     guard(input: RequestActionInput): Promise<GuardResult>;
@@ -162,5 +162,6 @@ export declare class BeaverClient {
     }>;
     private request;
 }
-export {};
+export { Beav3r as BeaverClient, Beav3rDeniedError as BeaverDeniedError };
+export type BeaverClientOptions = Beav3rOptions;
 //# sourceMappingURL=client.d.ts.map

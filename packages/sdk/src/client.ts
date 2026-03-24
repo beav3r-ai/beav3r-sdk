@@ -14,7 +14,7 @@ type RegisterDeviceInput = DeviceInput & {
   pairingToken?: string;
 };
 
-export type BeaverClientOptions = {
+export type Beav3rOptions = {
   baseUrl: string;
   agentId?: string;
   apiKey?: string;
@@ -85,20 +85,20 @@ export type ListPolicyRulesOptions = {
   agentId?: string;
 };
 
-export class BeaverDeniedError extends Error {
+export class Beav3rDeniedError extends Error {
   readonly actionId: string;
 
   constructor(actionId: string, reason?: string) {
-    super(reason ?? `Action ${actionId} was denied by Beaver`);
-    this.name = "BeaverDeniedError";
+    super(reason ?? `Action ${actionId} was denied by Beav3r`);
+    this.name = "Beav3rDeniedError";
     this.actionId = actionId;
   }
 }
 
-export class BeaverClient {
+export class Beav3r {
   private readonly fetchImpl: typeof fetch;
 
-  constructor(private readonly options: BeaverClientOptions) {
+  constructor(private readonly options: Beav3rOptions) {
     this.fetchImpl = options.fetchImpl ?? fetch;
   }
 
@@ -183,7 +183,7 @@ export class BeaverClient {
   async guardOrThrow(input: RequestActionInput): Promise<Exclude<GuardResult, DeniedActionResult>> {
     const result = await this.guard(input);
     if (result.status === "denied") {
-      throw new BeaverDeniedError(result.actionId, result.reason);
+      throw new Beav3rDeniedError(result.actionId, result.reason);
     }
     return result;
   }
@@ -279,7 +279,7 @@ export class BeaverClient {
     } catch (error) {
       const message = (error as Error).message;
       throw new Error(
-        `Cannot reach Beaver at ${this.options.baseUrl}. Make sure the server is running, bound to 0.0.0.0, and reachable from this machine. Original error: ${message}`
+        `Cannot reach Beav3r at ${this.options.baseUrl}. Make sure the server is running, bound to 0.0.0.0, and reachable from this machine. Original error: ${message}`
       );
     }
 
@@ -316,3 +316,6 @@ function buildQueryString(values: Record<string, string | undefined>): string {
   const query = params.toString();
   return query ? `?${query}` : "";
 }
+
+export { Beav3r as BeaverClient, Beav3rDeniedError as BeaverDeniedError };
+export type BeaverClientOptions = Beav3rOptions;

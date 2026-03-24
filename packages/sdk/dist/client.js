@@ -3,19 +3,20 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.BeaverClient = exports.BeaverDeniedError = void 0;
+exports.BeaverDeniedError = exports.BeaverClient = exports.Beav3r = exports.Beav3rDeniedError = void 0;
 const buffer_1 = require("buffer");
 const tweetnacl_1 = __importDefault(require("tweetnacl"));
-class BeaverDeniedError extends Error {
+class Beav3rDeniedError extends Error {
     actionId;
     constructor(actionId, reason) {
-        super(reason ?? `Action ${actionId} was denied by Beaver`);
-        this.name = "BeaverDeniedError";
+        super(reason ?? `Action ${actionId} was denied by Beav3r`);
+        this.name = "Beav3rDeniedError";
         this.actionId = actionId;
     }
 }
-exports.BeaverDeniedError = BeaverDeniedError;
-class BeaverClient {
+exports.Beav3rDeniedError = Beav3rDeniedError;
+exports.BeaverDeniedError = Beav3rDeniedError;
+class Beav3r {
     options;
     fetchImpl;
     constructor(options) {
@@ -93,7 +94,7 @@ class BeaverClient {
     async guardOrThrow(input) {
         const result = await this.guard(input);
         if (result.status === "denied") {
-            throw new BeaverDeniedError(result.actionId, result.reason);
+            throw new Beav3rDeniedError(result.actionId, result.reason);
         }
         return result;
     }
@@ -169,7 +170,7 @@ class BeaverClient {
         }
         catch (error) {
             const message = error.message;
-            throw new Error(`Cannot reach Beaver at ${this.options.baseUrl}. Make sure the server is running, bound to 0.0.0.0, and reachable from this machine. Original error: ${message}`);
+            throw new Error(`Cannot reach Beav3r at ${this.options.baseUrl}. Make sure the server is running, bound to 0.0.0.0, and reachable from this machine. Original error: ${message}`);
         }
         const body = (await response.json());
         if (!response.ok) {
@@ -178,7 +179,8 @@ class BeaverClient {
         return body;
     }
 }
-exports.BeaverClient = BeaverClient;
+exports.Beav3r = Beav3r;
+exports.BeaverClient = Beav3r;
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
