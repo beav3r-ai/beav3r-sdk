@@ -4,7 +4,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BeaverClient = exports.BeaverDeniedError = void 0;
-const node_crypto_1 = require("node:crypto");
+const buffer_1 = require("buffer");
 const tweetnacl_1 = __importDefault(require("tweetnacl"));
 class BeaverDeniedError extends Error {
     actionId;
@@ -45,13 +45,13 @@ class BeaverClient {
     buildAction(input) {
         const now = Math.floor(Date.now() / 1000);
         return {
-            actionId: input.actionId ?? (0, node_crypto_1.randomUUID)(),
+            actionId: input.actionId ?? createUuid(),
             agentId: input.agentId ?? this.options.agentId ?? "agent_default",
             actionType: input.actionType,
             payload: input.payload,
             attributes: input.attributes ?? {},
             timestamp: input.timestamp ?? now,
-            nonce: input.nonce ?? (0, node_crypto_1.randomUUID)(),
+            nonce: input.nonce ?? createUuid(),
             expiry: input.expiry ?? now + (this.options.defaultExpirySeconds ?? 60)
         };
     }
@@ -103,14 +103,14 @@ class BeaverClient {
     async getAction(actionId) {
         return this.request(`/actions/${actionId}`);
     }
-    async listPendingActions() {
-        return this.request("/actions/pending");
+    async listPendingActions(options) {
+        return this.request(`/actions/pending${buildQueryString({ deviceId: options?.deviceId })}`);
     }
-    async listRecentActions() {
-        return this.request("/actions/recent");
+    async listRecentActions(options) {
+        return this.request(`/actions/recent${buildQueryString({ deviceId: options?.deviceId })}`);
     }
-    async listPolicyRules() {
-        return this.request("/policy-rules");
+    async listPolicyRules(options) {
+        return this.request(`/policy-rules${buildQueryString({ agentId: options?.agentId })}`);
     }
     async registerDevice(device) {
         if (!device.secretKeyBase64) {
@@ -127,9 +127,9 @@ class BeaverClient {
                 pairingToken: device.pairingToken
             })
         });
-        const message = Buffer.from(challenge.challenge, "utf8");
-        const signature = tweetnacl_1.default.sign.detached(message, new Uint8Array(Buffer.from(device.secretKeyBase64, "base64")));
-        const challengeSignature = Buffer.from(signature).toString("base64");
+        const message = buffer_1.Buffer.from(challenge.challenge, "utf8");
+        const signature = tweetnacl_1.default.sign.detached(message, new Uint8Array(buffer_1.Buffer.from(device.secretKeyBase64, "base64")));
+        const challengeSignature = buffer_1.Buffer.from(signature).toString("base64");
         return this.request("/devices/register", {
             method: "POST",
             body: JSON.stringify({
@@ -181,5 +181,22 @@ class BeaverClient {
 exports.BeaverClient = BeaverClient;
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
+}
+function createUuid() {
+    const uuid = globalThis.crypto?.randomUUID?.();
+    if (uuid) {
+        return uuid;
+    }
+    return `beav3r-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+function buildQueryString(values) {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(values)) {
+        if (value) {
+            params.set(key, value);
+        }
+    }
+    const query = params.toString();
+    return query ? `?${query}` : "";
 }
 //# sourceMappingURL=client.js.map

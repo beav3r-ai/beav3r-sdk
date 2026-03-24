@@ -1,0 +1,27 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "Node",
+    "baseUrl": ".",
+    "paths": {
+      "@beav3r/protocol": ["packages/protocol/src/index.ts"],
+      "@beav3r/sdk": ["packages/sdk/src/index.ts"]
+    },
+    "rootDir": ".",
+    "outDir": "dist",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "types": ["node"]
+  },
+  "include": [
+    "apps/server/src/**/*.ts",
+    "packages/protocol/src/**/*.ts",
+    "packages/sdk/src/**/*.ts",
+    "tests/**/*.ts"
+  ],
+  "exclude": ["dist", "node_modules"]
+}

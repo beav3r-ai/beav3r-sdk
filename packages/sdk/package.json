@@ -1,6 +1,6 @@
 {
   "name": "@beav3r/sdk",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Beav3r client SDK for guarding autonomous agent actions.",
   "license": "MIT",
   "private": false,
@@ -33,6 +33,7 @@
   },
   "homepage": "https://beav3r.ai",
   "dependencies": {
-    "@beav3r/protocol": "1.0.0"
+    "@beav3r/protocol": "1.0.0",
+    "tweetnacl": "^1.0.3"
   }
 }

@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { Buffer } from "buffer";
 import nacl from "tweetnacl";
 import type {
   ActionRequest,
@@ -73,6 +73,18 @@ export type GuardWaitOptions = {
   timeoutMs?: number;
 };
 
+export type ListPendingActionsOptions = {
+  deviceId?: string;
+};
+
+export type ListRecentActionsOptions = {
+  deviceId?: string;
+};
+
+export type ListPolicyRulesOptions = {
+  agentId?: string;
+};
+
 export class BeaverDeniedError extends Error {
   readonly actionId: string;
 
@@ -116,13 +128,13 @@ export class BeaverClient {
   private buildAction(input: RequestActionInput): ActionRequest {
     const now = Math.floor(Date.now() / 1000);
     return {
-      actionId: input.actionId ?? randomUUID(),
+      actionId: input.actionId ?? createUuid(),
       agentId: input.agentId ?? this.options.agentId ?? "agent_default",
       actionType: input.actionType,
       payload: input.payload,
       attributes: input.attributes ?? {},
       timestamp: input.timestamp ?? now,
-      nonce: input.nonce ?? randomUUID(),
+      nonce: input.nonce ?? createUuid(),
       expiry: input.expiry ?? now + (this.options.defaultExpirySeconds ?? 60)
     };
   }
@@ -186,18 +198,18 @@ export class BeaverClient {
     return this.request(`/actions/${actionId}`);
   }
 
-  async listPendingActions(): Promise<{ items: QueueItem[] }> {
-    return this.request("/actions/pending");
+  async listPendingActions(options?: ListPendingActionsOptions): Promise<{ items: QueueItem[] }> {
+    return this.request(`/actions/pending${buildQueryString({ deviceId: options?.deviceId })}`);
   }
 
-  async listRecentActions(): Promise<{
+  async listRecentActions(options?: ListRecentActionsOptions): Promise<{
     items: Array<ActionRequest & { actionHash: string; status: string; reason?: string; evaluation: ActionEvaluation }>;
   }> {
-    return this.request("/actions/recent");
+    return this.request(`/actions/recent${buildQueryString({ deviceId: options?.deviceId })}`);
   }
 
-  async listPolicyRules(): Promise<{ items: PolicyRule[] }> {
-    return this.request("/policy-rules");
+  async listPolicyRules(options?: ListPolicyRulesOptions): Promise<{ items: PolicyRule[] }> {
+    return this.request(`/policy-rules${buildQueryString({ agentId: options?.agentId })}`);
   }
 
   async registerDevice(device: RegisterDeviceInput): Promise<{ status: "registered" }> {
@@ -281,4 +293,26 @@ export class BeaverClient {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function createUuid(): string {
+  const uuid = globalThis.crypto?.randomUUID?.();
+  if (uuid) {
+    return uuid;
+  }
+
+  return `beav3r-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+function buildQueryString(values: Record<string, string | undefined>): string {
+  const params = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(values)) {
+    if (value) {
+      params.set(key, value);
+    }
+  }
+
+  const query = params.toString();
+  return query ? `?${query}` : "";
 }

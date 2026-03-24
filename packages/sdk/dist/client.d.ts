@@ -105,6 +105,15 @@ export type GuardWaitOptions = {
     pollIntervalMs?: number;
     timeoutMs?: number;
 };
+export type ListPendingActionsOptions = {
+    deviceId?: string;
+};
+export type ListRecentActionsOptions = {
+    deviceId?: string;
+};
+export type ListPolicyRulesOptions = {
+    agentId?: string;
+};
 export declare class BeaverDeniedError extends Error {
     readonly actionId: string;
     constructor(actionId: string, reason?: string);
@@ -126,10 +135,10 @@ export declare class BeaverClient {
         reason?: string;
         evaluation: ActionEvaluation;
     }>;
-    listPendingActions(): Promise<{
+    listPendingActions(options?: ListPendingActionsOptions): Promise<{
         items: QueueItem[];
     }>;
-    listRecentActions(): Promise<{
+    listRecentActions(options?: ListRecentActionsOptions): Promise<{
         items: Array<ActionRequest & {
             actionHash: string;
             status: string;
@@ -137,7 +146,7 @@ export declare class BeaverClient {
             evaluation: ActionEvaluation;
         }>;
     }>;
-    listPolicyRules(): Promise<{
+    listPolicyRules(options?: ListPolicyRulesOptions): Promise<{
         items: PolicyRule[];
     }>;
     registerDevice(device: RegisterDeviceInput): Promise<{
