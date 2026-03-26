@@ -10,6 +10,8 @@ exports.approvalTokenSchema = zod_1.z.object({
 });
 exports.approvalRejectSchema = zod_1.z.object({
     actionHash: zod_1.z.string().min(1),
-    deviceId: zod_1.z.string().min(1)
+    deviceId: zod_1.z.string().min(1),
+    signature: zod_1.z.string().min(1),
+    expiry: zod_1.z.number().int().nonnegative()
 });
 //# sourceMappingURL=approval-token.js.map

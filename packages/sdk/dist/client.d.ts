@@ -7,6 +7,8 @@ export type Beav3rOptions = {
     baseUrl: string;
     agentId?: string;
     apiKey?: string;
+    deviceId?: string;
+    secretKeyBase64?: string;
     defaultExpirySeconds?: number;
     fetchImpl?: typeof fetch;
 };
@@ -107,12 +109,23 @@ export type GuardWaitOptions = {
 };
 export type ListPendingActionsOptions = {
     deviceId?: string;
+    secretKeyBase64?: string;
+    projectId?: string;
 };
 export type ListRecentActionsOptions = {
     deviceId?: string;
+    secretKeyBase64?: string;
+    projectId?: string;
 };
 export type ListPolicyRulesOptions = {
     agentId?: string;
+    deviceId?: string;
+    secretKeyBase64?: string;
+};
+export type ActionReadOptions = {
+    actionHash?: string;
+    deviceId?: string;
+    secretKeyBase64?: string;
 };
 export declare class Beav3rDeniedError extends Error {
     readonly actionId: string;
@@ -128,8 +141,8 @@ export declare class Beav3r {
     private buildAction;
     guardAndWait(input: RequestActionInput, options?: GuardWaitOptions): Promise<GuardAndWaitResult>;
     guardOrThrow(input: RequestActionInput): Promise<Exclude<GuardResult, DeniedActionResult>>;
-    getActionStatus(actionId: string): Promise<ActionStatusResult>;
-    getAction(actionId: string): Promise<ActionRequest & {
+    getActionStatus(actionId: string, options?: ActionReadOptions): Promise<ActionStatusResult>;
+    getAction(actionId: string, options?: ActionReadOptions): Promise<ActionRequest & {
         actionHash: string;
         status: string;
         reason?: string;
@@ -156,10 +169,20 @@ export declare class Beav3r {
         status: "approved" | "executed";
         actionId: string;
     }>;
-    rejectApproval(rejection: ApprovalReject): Promise<{
+    rejectApproval(rejection: Omit<ApprovalReject, "signature" | "expiry"> & Partial<Pick<ApprovalReject, "signature" | "expiry">>): Promise<{
         status: "rejected";
         actionId: string;
     }>;
+    getActionStatusWithOptions(actionId: string, options?: ActionReadOptions): Promise<ActionStatusResult>;
+    getActionWithOptions(actionId: string, options?: ActionReadOptions): Promise<ActionRequest & {
+        actionHash: string;
+        status: string;
+        reason?: string;
+        evaluation: ActionEvaluation;
+    }>;
+    private buildActionReadQuery;
+    private buildSignedDeviceQuery;
+    private completeRejection;
     private request;
 }
 export { Beav3r as BeaverClient, Beav3rDeniedError as BeaverDeniedError };

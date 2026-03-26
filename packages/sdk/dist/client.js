@@ -98,20 +98,32 @@ class Beav3r {
         }
         return result;
     }
-    async getActionStatus(actionId) {
-        return this.request(`/actions/${actionId}/status`);
+    async getActionStatus(actionId, options) {
+        return this.getActionStatusWithOptions(actionId, options);
     }
-    async getAction(actionId) {
-        return this.request(`/actions/${actionId}`);
+    async getAction(actionId, options) {
+        return this.getActionWithOptions(actionId, options);
     }
     async listPendingActions(options) {
-        return this.request(`/actions/pending${buildQueryString({ deviceId: options?.deviceId })}`);
+        const query = {
+            projectId: options?.projectId,
+            ...this.buildSignedDeviceQuery("actions-pending", options?.deviceId, options?.secretKeyBase64)
+        };
+        return this.request(`/actions/pending${buildQueryString(query)}`);
     }
     async listRecentActions(options) {
-        return this.request(`/actions/recent${buildQueryString({ deviceId: options?.deviceId })}`);
+        const query = {
+            projectId: options?.projectId,
+            ...this.buildSignedDeviceQuery("actions-recent", options?.deviceId, options?.secretKeyBase64)
+        };
+        return this.request(`/actions/recent${buildQueryString(query)}`);
     }
     async listPolicyRules(options) {
-        return this.request(`/policy-rules${buildQueryString({ agentId: options?.agentId })}`);
+        const query = {
+            agentId: options?.agentId,
+            ...this.buildSignedDeviceQuery("policy-rules", options?.deviceId, options?.secretKeyBase64)
+        };
+        return this.request(`/policy-rules${buildQueryString(query)}`);
     }
     async registerDevice(device) {
         if (!device.secretKeyBase64) {
@@ -150,10 +162,62 @@ class Beav3r {
         });
     }
     async rejectApproval(rejection) {
+        const payload = this.completeRejection(rejection);
         return this.request("/approvals/reject", {
             method: "POST",
-            body: JSON.stringify(rejection)
+            body: JSON.stringify(payload)
         });
+    }
+    async getActionStatusWithOptions(actionId, options) {
+        const query = this.buildActionReadQuery(`action-status:${actionId}`, options);
+        return this.request(`/actions/${actionId}/status${buildQueryString(query)}`);
+    }
+    async getActionWithOptions(actionId, options) {
+        const query = this.buildActionReadQuery(`action-read:${actionId}`, options);
+        return this.request(`/actions/${actionId}${buildQueryString(query)}`);
+    }
+    buildActionReadQuery(purpose, options) {
+        if (options?.actionHash) {
+            return { actionHash: options.actionHash };
+        }
+        return this.buildSignedDeviceQuery(purpose, options?.deviceId, options?.secretKeyBase64);
+    }
+    buildSignedDeviceQuery(purpose, deviceId, secretKeyBase64) {
+        const effectiveDeviceID = deviceId ?? this.options.deviceId;
+        const effectiveSecretKey = secretKeyBase64 ?? this.options.secretKeyBase64;
+        if (!effectiveDeviceID || !effectiveSecretKey) {
+            return {};
+        }
+        const timestamp = String(Math.floor(Date.now() / 1000));
+        const nonce = createUuid();
+        const signature = signUtf8Message(`${purpose}:${effectiveDeviceID}:${timestamp}:${nonce}`, effectiveSecretKey);
+        return {
+            deviceId: effectiveDeviceID,
+            timestamp,
+            nonce,
+            signature
+        };
+    }
+    completeRejection(rejection) {
+        if (rejection.signature && typeof rejection.expiry === "number") {
+            return {
+                actionHash: rejection.actionHash,
+                deviceId: rejection.deviceId,
+                signature: rejection.signature,
+                expiry: rejection.expiry
+            };
+        }
+        const effectiveDeviceID = rejection.deviceId || this.options.deviceId;
+        const effectiveSecretKey = this.options.secretKeyBase64;
+        if (!effectiveDeviceID || !effectiveSecretKey) {
+            throw new Error("rejectApproval requires signature/expiry or signer device credentials");
+        }
+        return {
+            ...rejection,
+            deviceId: effectiveDeviceID,
+            signature: signUtf8Message(rejection.actionHash, effectiveSecretKey),
+            expiry: Math.floor(Date.now() / 1000) + (this.options.defaultExpirySeconds ?? 60)
+        };
     }
     async request(path, init) {
         const url = `${this.options.baseUrl}${path}`;
@@ -172,7 +236,8 @@ class Beav3r {
             const message = error.message;
             throw new Error(`Cannot reach Beav3r at ${this.options.baseUrl}. Make sure the server is running, bound to 0.0.0.0, and reachable from this machine. Original error: ${message}`);
         }
-        const body = (await response.json());
+        const bodyText = await response.text();
+        const body = (bodyText ? JSON.parse(bodyText) : {});
         if (!response.ok) {
             throw new Error(body.error ?? `Request to ${url} failed with status ${response.status}`);
         }
@@ -181,6 +246,10 @@ class Beav3r {
 }
 exports.Beav3r = Beav3r;
 exports.BeaverClient = Beav3r;
+function signUtf8Message(message, secretKeyBase64) {
+    const signature = tweetnacl_1.default.sign.detached(buffer_1.Buffer.from(message, "utf8"), new Uint8Array(buffer_1.Buffer.from(secretKeyBase64, "base64")));
+    return buffer_1.Buffer.from(signature).toString("base64");
+}
 function sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
 }
