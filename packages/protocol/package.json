@@ -1,6 +1,6 @@
 {
   "name": "@beav3r/protocol",
-  "version": "1.0.1-beta.0",
+  "version": "1.1.0-beta.1",
   "description": "Shared Beav3r protocol schemas, canonicalization, and action hashing.",
   "license": "MIT",
   "private": false,
@@ -25,6 +25,9 @@
   },
   "publishConfig": {
     "access": "public"
+  },
+  "dependencies": {
+    "zod": "^3.24.3"
   },
   "repository": {
     "type": "git",

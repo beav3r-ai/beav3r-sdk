@@ -19,6 +19,7 @@ export type RequestActionInput = Omit<ActionRequest, "agentId" | "actionId" | "a
     timestamp?: number;
     nonce?: string;
     expiry?: number;
+    callbackUrl?: string;
 };
 export type RelayActionInput = RequestActionInput & {
     reason: string;
@@ -30,6 +31,12 @@ export type ActionEvaluation = {
 };
 export type ExecutedActionResult = {
     status: "executed";
+    actionId: string;
+    actionHash: string;
+    evaluation: ActionEvaluation;
+};
+export type ApprovedActionResult = {
+    status: "approved";
     actionId: string;
     actionHash: string;
     evaluation: ActionEvaluation;
@@ -47,8 +54,9 @@ export type DeniedActionResult = {
     reason: string;
     evaluation: ActionEvaluation;
 };
-export type ActionRequestResult = ExecutedActionResult | PendingActionResult | DeniedActionResult;
+export type ActionRequestResult = ExecutedActionResult | ApprovedActionResult | PendingActionResult | DeniedActionResult;
 export type GuardResult = ActionRequestResult;
+export type RelayActionResult = ApprovedActionResult | PendingActionResult | DeniedActionResult;
 export type ActionStatusResult = {
     actionId: string;
     status: "pending";
@@ -136,8 +144,10 @@ export declare class Beav3r {
     private readonly fetchImpl;
     constructor(options: Beav3rOptions);
     requestAction(input: RequestActionInput): Promise<ActionRequestResult>;
-    relayAction(input: RelayActionInput): Promise<PendingActionResult>;
+    relayAction(input: RelayActionInput): Promise<RelayActionResult>;
     guard(input: RequestActionInput): Promise<GuardResult>;
+    guardAndExit(input: RequestActionInput): Promise<GuardResult>;
+    private requireAPIKey;
     private buildAction;
     guardAndWait(input: RequestActionInput, options?: GuardWaitOptions): Promise<GuardAndWaitResult>;
     guardOrThrow(input: RequestActionInput): Promise<Exclude<GuardResult, DeniedActionResult>>;

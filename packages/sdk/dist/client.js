@@ -24,6 +24,7 @@ class Beav3r {
         this.fetchImpl = options.fetchImpl ?? fetch;
     }
     async requestAction(input) {
+        this.requireAPIKey("requestAction");
         const action = this.buildAction(input);
         return this.request("/actions/request", {
             method: "POST",
@@ -31,6 +32,7 @@ class Beav3r {
         });
     }
     async relayAction(input) {
+        this.requireAPIKey("relayAction");
         const action = this.buildAction(input);
         return this.request("/actions/relay", {
             method: "POST",
@@ -43,13 +45,26 @@ class Beav3r {
     async guard(input) {
         return this.requestAction(input);
     }
+    async guardAndExit(input) {
+        return this.guard(input);
+    }
+    requireAPIKey(methodName) {
+        if (this.options.apiKey?.trim()) {
+            return;
+        }
+        throw new Error(`Beav3r API key is required for ${methodName}. Configure apiKey when creating the client.`);
+    }
     buildAction(input) {
         const now = Math.floor(Date.now() / 1000);
+        const payload = { ...input.payload };
+        if (input.callbackUrl) {
+            payload.callbackUrl = input.callbackUrl;
+        }
         return {
             actionId: input.actionId ?? createUuid(),
             agentId: input.agentId ?? this.options.agentId ?? "agent_default",
             actionType: input.actionType,
-            payload: input.payload,
+            payload,
             attributes: input.attributes ?? {},
             timestamp: input.timestamp ?? now,
             nonce: input.nonce ?? createUuid(),
@@ -59,7 +74,7 @@ class Beav3r {
     async guardAndWait(input, options) {
         const startedAt = Date.now();
         const initial = await this.guard(input);
-        if (initial.status === "executed" || initial.status === "denied") {
+        if (initial.status === "approved" || initial.status === "executed" || initial.status === "denied") {
             return initial;
         }
         const timeoutMs = options?.timeoutMs ?? 5 * 60 * 1000;

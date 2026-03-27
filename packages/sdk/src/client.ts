@@ -31,6 +31,7 @@ export type RequestActionInput = Omit<ActionRequest, "agentId" | "actionId" | "a
   timestamp?: number;
   nonce?: string;
   expiry?: number;
+  callbackUrl?: string;
 };
 
 export type RelayActionInput = RequestActionInput & {
@@ -44,15 +45,22 @@ export type ActionEvaluation = {
 };
 
 export type ExecutedActionResult = { status: "executed"; actionId: string; actionHash: string; evaluation: ActionEvaluation };
+export type ApprovedActionResult = { status: "approved"; actionId: string; actionHash: string; evaluation: ActionEvaluation };
 export type PendingActionResult = { status: "pending"; actionId: string; actionHash: string; reason: string; evaluation: ActionEvaluation };
 export type DeniedActionResult = { status: "denied"; actionId: string; reason: string; evaluation: ActionEvaluation };
 
 export type ActionRequestResult =
   | ExecutedActionResult
+  | ApprovedActionResult
   | PendingActionResult
   | DeniedActionResult;
 
 export type GuardResult = ActionRequestResult;
+
+export type RelayActionResult =
+  | ApprovedActionResult
+  | PendingActionResult
+  | DeniedActionResult;
 
 export type ActionStatusResult =
   | { actionId: string; status: "pending"; reason?: string }
@@ -117,6 +125,7 @@ export class Beav3r {
   }
 
   async requestAction(input: RequestActionInput): Promise<ActionRequestResult> {
+    this.requireAPIKey("requestAction");
     const action = this.buildAction(input);
     return this.request("/actions/request", {
       method: "POST",
@@ -124,7 +133,8 @@ export class Beav3r {
     });
   }
 
-  async relayAction(input: RelayActionInput): Promise<PendingActionResult> {
+  async relayAction(input: RelayActionInput): Promise<RelayActionResult> {
+    this.requireAPIKey("relayAction");
     const action = this.buildAction(input);
     return this.request("/actions/relay", {
       method: "POST",
@@ -139,13 +149,32 @@ export class Beav3r {
     return this.requestAction(input);
   }
 
+  async guardAndExit(input: RequestActionInput): Promise<GuardResult> {
+    return this.guard(input);
+  }
+
+  private requireAPIKey(methodName: string): void {
+    if (this.options.apiKey?.trim()) {
+      return;
+    }
+
+    throw new Error(
+      `Beav3r API key is required for ${methodName}. Configure apiKey when creating the client.`
+    );
+  }
+
   private buildAction(input: RequestActionInput): ActionRequest {
     const now = Math.floor(Date.now() / 1000);
+    const payload = { ...input.payload } as ActionRequest["payload"];
+    if (input.callbackUrl) {
+      payload.callbackUrl = input.callbackUrl;
+    }
+
     return {
       actionId: input.actionId ?? createUuid(),
       agentId: input.agentId ?? this.options.agentId ?? "agent_default",
       actionType: input.actionType,
-      payload: input.payload,
+      payload,
       attributes: input.attributes ?? {},
       timestamp: input.timestamp ?? now,
       nonce: input.nonce ?? createUuid(),
@@ -157,7 +186,7 @@ export class Beav3r {
     const startedAt = Date.now();
     const initial = await this.guard(input);
 
-    if (initial.status === "executed" || initial.status === "denied") {
+    if (initial.status === "approved" || initial.status === "executed" || initial.status === "denied") {
       return initial;
     }
 
@@ -310,6 +339,7 @@ export class Beav3r {
     if (options?.actionHash) {
       return { actionHash: options.actionHash };
     }
+
     return this.buildSignedDeviceQuery(purpose, options?.deviceId, options?.secretKeyBase64);
   }
 
@@ -330,6 +360,7 @@ export class Beav3r {
       `${purpose}:${effectiveDeviceID}:${timestamp}:${nonce}`,
       effectiveSecretKey
     );
+
     return {
       deviceId: effectiveDeviceID,
       timestamp,

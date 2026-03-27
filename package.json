@@ -1,7 +1,7 @@
 {
   "name": "beav3r-sdk-repo",
   "private": true,
-  "version": "1.0.0",
+  "version": "1.1.0-beta.1",
   "description": "Standalone source repo for the public Beav3r SDK and protocol packages.",
   "license": "MIT",
   "packageManager": "npm@11.6.0",
@@ -19,6 +19,7 @@
     "release-packages": "changeset publish"
   },
   "devDependencies": {
+    "@types/node": "^22.15.2",
     "@changesets/cli": "^2.29.6",
     "typescript": "^5.8.2"
   }
