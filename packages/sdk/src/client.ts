@@ -8,6 +8,7 @@ import type {
   PolicyRule,
   QueueItem
 } from "@beav3r/protocol";
+import type { SignedExecutionAuthorizationArtifact } from "./execution-authorization";
 
 type RegisterDeviceInput = DeviceInput & {
   secretKeyBase64?: string;
@@ -70,9 +71,16 @@ export type ActionStatusResult =
   | { actionId: string; status: "rejected"; reason?: string }
   | { actionId: string; status: "expired"; reason?: string };
 
+type GuardAndWaitAllowResult = {
+  status: "approved" | "executed";
+  actionId: string;
+  actionHash: string;
+  evaluation: ActionEvaluation;
+  executionAuthorizationArtifact?: SignedExecutionAuthorizationArtifact;
+};
+
 export type GuardAndWaitResult =
-  | { status: "approved"; actionId: string; actionHash: string; evaluation: ActionEvaluation }
-  | { status: "executed"; actionId: string; actionHash: string; evaluation: ActionEvaluation }
+  | GuardAndWaitAllowResult
   | { status: "denied"; actionId: string; reason?: string }
   | { status: "rejected"; actionId: string; reason?: string }
   | { status: "expired"; actionId: string; reason?: string }
@@ -81,6 +89,12 @@ export type GuardAndWaitResult =
 export type GuardWaitOptions = {
   pollIntervalMs?: number;
   timeoutMs?: number;
+  audience?: string;
+};
+
+export type MintExecutionAuthorizationInput = {
+  actionId: string;
+  audience: string;
 };
 
 export type ListPendingActionsOptions = {
@@ -153,6 +167,27 @@ export class Beav3r {
     return this.guard(input);
   }
 
+  async mintExecutionAuthorization(
+    input: MintExecutionAuthorizationInput
+  ): Promise<SignedExecutionAuthorizationArtifact> {
+    this.requireAPIKey("mintExecutionAuthorization");
+    const actionId = input.actionId.trim();
+    const audience = input.audience.trim();
+    if (!actionId) {
+      throw new Error("mintExecutionAuthorization requires a non-empty actionId");
+    }
+    if (!audience) {
+      throw new Error("mintExecutionAuthorization requires a non-empty audience");
+    }
+
+    return this.request(`/actions/${encodeURIComponent(actionId)}/execution-authorization`, {
+      method: "POST",
+      body: JSON.stringify({
+        audience
+      })
+    });
+  }
+
   private requireAPIKey(methodName: string): void {
     if (this.options.apiKey?.trim()) {
       return;
@@ -186,7 +221,10 @@ export class Beav3r {
     const startedAt = Date.now();
     const initial = await this.guard(input);
 
-    if (initial.status === "approved" || initial.status === "executed" || initial.status === "denied") {
+    if (initial.status === "approved" || initial.status === "executed") {
+      return this.attachExecutionAuthorizationIfNeeded(initial, options?.audience);
+    }
+    if (initial.status === "denied") {
       return initial;
     }
 
@@ -196,12 +234,12 @@ export class Beav3r {
     while (Date.now() - startedAt < timeoutMs) {
       const status = await this.getActionStatus(initial.actionId);
       if (status.status === "approved" || status.status === "executed") {
-        return {
+        return this.attachExecutionAuthorizationIfNeeded({
           status: status.status === "approved" ? "approved" : "executed",
           actionId: initial.actionId,
           actionHash: initial.actionHash,
           evaluation: initial.evaluation
-        };
+        }, options?.audience);
       }
       if (status.status === "denied" || status.status === "rejected" || status.status === "expired") {
         return {
@@ -341,6 +379,25 @@ export class Beav3r {
     }
 
     return this.buildSignedDeviceQuery(purpose, options?.deviceId, options?.secretKeyBase64);
+  }
+
+  private async attachExecutionAuthorizationIfNeeded(
+    result: Omit<GuardAndWaitAllowResult, "executionAuthorizationArtifact">,
+    audience?: string
+  ): Promise<GuardAndWaitAllowResult> {
+    if (!audience) {
+      return result;
+    }
+
+    const executionAuthorizationArtifact = await this.mintExecutionAuthorization({
+      actionId: result.actionId,
+      audience
+    });
+
+    return {
+      ...result,
+      executionAuthorizationArtifact
+    };
   }
 
   private buildSignedDeviceQuery(

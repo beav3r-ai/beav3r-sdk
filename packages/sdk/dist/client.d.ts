@@ -1,4 +1,5 @@
 import type { ActionRequest, ApprovalReject, ApprovalToken, DeviceInput, PolicyRule, QueueItem } from "@beav3r/protocol";
+import type { SignedExecutionAuthorizationArtifact } from "./execution-authorization";
 type RegisterDeviceInput = DeviceInput & {
     secretKeyBase64?: string;
     pairingToken?: string;
@@ -82,17 +83,14 @@ export type ActionStatusResult = {
     status: "expired";
     reason?: string;
 };
-export type GuardAndWaitResult = {
-    status: "approved";
+type GuardAndWaitAllowResult = {
+    status: "approved" | "executed";
     actionId: string;
     actionHash: string;
     evaluation: ActionEvaluation;
-} | {
-    status: "executed";
-    actionId: string;
-    actionHash: string;
-    evaluation: ActionEvaluation;
-} | {
+    executionAuthorizationArtifact?: SignedExecutionAuthorizationArtifact;
+};
+export type GuardAndWaitResult = GuardAndWaitAllowResult | {
     status: "denied";
     actionId: string;
     reason?: string;
@@ -114,6 +112,11 @@ export type GuardAndWaitResult = {
 export type GuardWaitOptions = {
     pollIntervalMs?: number;
     timeoutMs?: number;
+    audience?: string;
+};
+export type MintExecutionAuthorizationInput = {
+    actionId: string;
+    audience: string;
 };
 export type ListPendingActionsOptions = {
     deviceId?: string;
@@ -147,6 +150,7 @@ export declare class Beav3r {
     relayAction(input: RelayActionInput): Promise<RelayActionResult>;
     guard(input: RequestActionInput): Promise<GuardResult>;
     guardAndExit(input: RequestActionInput): Promise<GuardResult>;
+    mintExecutionAuthorization(input: MintExecutionAuthorizationInput): Promise<SignedExecutionAuthorizationArtifact>;
     private requireAPIKey;
     private buildAction;
     guardAndWait(input: RequestActionInput, options?: GuardWaitOptions): Promise<GuardAndWaitResult>;
@@ -191,6 +195,7 @@ export declare class Beav3r {
         evaluation: ActionEvaluation;
     }>;
     private buildActionReadQuery;
+    private attachExecutionAuthorizationIfNeeded;
     private buildSignedDeviceQuery;
     private completeRejection;
     private request;

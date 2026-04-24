@@ -1,7 +1,7 @@
 {
   "name": "beav3r-sdk-repo",
   "private": true,
-  "version": "1.1.0-beta.1",
+  "version": "2.0.0-beta.1",
   "description": "Standalone source repo for the public Beav3r SDK and protocol packages.",
   "license": "MIT",
   "packageManager": "npm@11.6.0",

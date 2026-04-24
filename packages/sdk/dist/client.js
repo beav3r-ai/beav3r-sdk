@@ -48,6 +48,23 @@ class Beav3r {
     async guardAndExit(input) {
         return this.guard(input);
     }
+    async mintExecutionAuthorization(input) {
+        this.requireAPIKey("mintExecutionAuthorization");
+        const actionId = input.actionId.trim();
+        const audience = input.audience.trim();
+        if (!actionId) {
+            throw new Error("mintExecutionAuthorization requires a non-empty actionId");
+        }
+        if (!audience) {
+            throw new Error("mintExecutionAuthorization requires a non-empty audience");
+        }
+        return this.request(`/actions/${encodeURIComponent(actionId)}/execution-authorization`, {
+            method: "POST",
+            body: JSON.stringify({
+                audience
+            })
+        });
+    }
     requireAPIKey(methodName) {
         if (this.options.apiKey?.trim()) {
             return;
@@ -74,7 +91,10 @@ class Beav3r {
     async guardAndWait(input, options) {
         const startedAt = Date.now();
         const initial = await this.guard(input);
-        if (initial.status === "approved" || initial.status === "executed" || initial.status === "denied") {
+        if (initial.status === "approved" || initial.status === "executed") {
+            return this.attachExecutionAuthorizationIfNeeded(initial, options?.audience);
+        }
+        if (initial.status === "denied") {
             return initial;
         }
         const timeoutMs = options?.timeoutMs ?? 5 * 60 * 1000;
@@ -82,12 +102,12 @@ class Beav3r {
         while (Date.now() - startedAt < timeoutMs) {
             const status = await this.getActionStatus(initial.actionId);
             if (status.status === "approved" || status.status === "executed") {
-                return {
+                return this.attachExecutionAuthorizationIfNeeded({
                     status: status.status === "approved" ? "approved" : "executed",
                     actionId: initial.actionId,
                     actionHash: initial.actionHash,
                     evaluation: initial.evaluation
-                };
+                }, options?.audience);
             }
             if (status.status === "denied" || status.status === "rejected" || status.status === "expired") {
                 return {
@@ -196,6 +216,19 @@ class Beav3r {
             return { actionHash: options.actionHash };
         }
         return this.buildSignedDeviceQuery(purpose, options?.deviceId, options?.secretKeyBase64);
+    }
+    async attachExecutionAuthorizationIfNeeded(result, audience) {
+        if (!audience) {
+            return result;
+        }
+        const executionAuthorizationArtifact = await this.mintExecutionAuthorization({
+            actionId: result.actionId,
+            audience
+        });
+        return {
+            ...result,
+            executionAuthorizationArtifact
+        };
     }
     buildSignedDeviceQuery(purpose, deviceId, secretKeyBase64) {
         const effectiveDeviceID = deviceId ?? this.options.deviceId;
