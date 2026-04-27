@@ -104,6 +104,43 @@ test("verifyExecutionAuthorization supports legacy top-level keyId fallback", ()
   }), true);
 });
 
+test("verifyExecutionAuthorization ignores server-added payload.presentation metadata", () => {
+  const keyPair = nacl.sign.keyPair();
+  const artifact = createArtifact({
+    action: ACTION,
+    keyPair,
+    payloadOverrides: {
+      audience: "executor",
+      decision: "allow",
+      expiresAt: 2000000000
+    }
+  });
+
+  const actionWithPresentation = {
+    ...ACTION,
+    payload: {
+      ...ACTION.payload,
+      presentation: {
+        review: {
+          title: "Display-only metadata"
+        }
+      }
+    }
+  };
+
+  const payload = verifyExecutionAuthorization({
+    artifact,
+    action: actionWithPresentation,
+    audience: "executor",
+    publicKeys: {
+      [artifact.payload.keyId]: Buffer.from(keyPair.publicKey).toString("base64")
+    },
+    now: 1900000000
+  });
+
+  assert.equal(payload.actionHash, hashAction(ACTION));
+});
+
 test("verifyExecutionAuthorization fails on signature mismatch", () => {
   const keyPair = nacl.sign.keyPair();
   const artifact = createArtifact({
@@ -218,7 +255,7 @@ test("verifyExecutionAuthorization fails on missing keyId, trust, expiry, audien
     audience: "executor",
     publicKeys: { [deniedArtifact.keyId]: trustedPublicKey },
     now: 1900000000
-  }), /must be "approved" or "executed"/i);
+  }), /must be "allow", "approved", or "executed"/i);
 
   const wrongHashArtifact = createArtifact({
     action: ACTION,
@@ -334,6 +371,154 @@ test("guardAndWait mints and returns execution authorization artifact on allow p
   assert.equal(calls[2].url, "https://api.example.test/actions/a-1/execution-authorization");
   assert.equal(calls[2].init?.method, "POST");
   assert.equal(calls[2].init?.body, JSON.stringify({ audience: "executor" }));
+});
+
+test("redeemExecutionAuthorization posts artifact redemption request", async () => {
+  const artifact = createArtifact({
+    action: ACTION,
+    keyPair: nacl.sign.keyPair(),
+    payloadOverrides: {
+      actionId: "a-2",
+      audience: "payments-executor",
+      decision: "allow",
+      expiresAt: 2000000000
+    }
+  });
+
+  const calls = [];
+  const client = new Beav3r({
+    baseUrl: "https://api.example.test",
+    apiKey: "test-api-key",
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init });
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({
+            status: "redeemed",
+            artifactId: artifact.payload.artifactId,
+            actionId: "a-2",
+            redeemedAt: 1900000001
+          });
+        }
+      };
+    }
+  });
+
+  const result = await client.redeemExecutionAuthorization({
+    artifact,
+    audience: "payments-executor",
+    actionHash: hashAction(ACTION)
+  });
+
+  assert.deepEqual(result, {
+    status: "redeemed",
+    artifactId: artifact.payload.artifactId,
+    actionId: "a-2",
+    redeemedAt: 1900000001
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "https://api.example.test/actions/a-2/execution-authorization/redeem");
+  assert.equal(calls[0].init?.method, "POST");
+});
+
+test("authorizeAndExecute verifies, redeems, and then executes once", async () => {
+  const keyPair = nacl.sign.keyPair();
+  const artifact = createArtifact({
+    action: ACTION,
+    keyPair,
+    payloadOverrides: {
+      actionId: ACTION.actionId,
+      audience: "payments-executor",
+      decision: "allow",
+      expiresAt: 2000000000
+    }
+  });
+
+  const calls = [];
+  const client = new Beav3r({
+    baseUrl: "https://api.example.test",
+    apiKey: "test-api-key",
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init });
+      return {
+        ok: true,
+        status: 200,
+        async text() {
+          return JSON.stringify({
+            status: "redeemed",
+            artifactId: artifact.payload.artifactId,
+            actionId: ACTION.actionId,
+            redeemedAt: 1900000002
+          });
+        }
+      };
+    }
+  });
+
+  let executed = false;
+  const result = await client.authorizeAndExecute({
+    action: ACTION,
+    artifact,
+    audience: "payments-executor",
+    publicKeys: {
+      [artifact.payload.keyId]: Buffer.from(keyPair.publicKey).toString("base64")
+    },
+    now: 1900000000,
+    execute: async ({ actionHash, redemption }) => {
+      executed = true;
+      assert.equal(actionHash, hashAction(ACTION));
+      assert.equal(redemption.artifactId, artifact.payload.artifactId);
+      return { ok: true, transferId: "tr_123" };
+    }
+  });
+
+  assert.equal(executed, true);
+  assert.equal(result.actionId, ACTION.actionId);
+  assert.equal(result.actionHash, hashAction(ACTION));
+  assert.equal(result.artifactId, artifact.payload.artifactId);
+  assert.deepEqual(result.executionResult, { ok: true, transferId: "tr_123" });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, `https://api.example.test/actions/${ACTION.actionId}/execution-authorization/redeem`);
+});
+
+test("authorizeAndExecute does not run execute callback when artifact verification fails", async () => {
+  const keyPair = nacl.sign.keyPair();
+  const artifact = createArtifact({
+    action: ACTION,
+    keyPair,
+    payloadOverrides: {
+      actionId: ACTION.actionId,
+      audience: "payments-executor",
+      decision: "allow",
+      expiresAt: 1800000000
+    }
+  });
+
+  const client = new Beav3r({
+    baseUrl: "https://api.example.test",
+    apiKey: "test-api-key",
+    fetchImpl: async () => {
+      throw new Error("fetch should not be called when verification fails");
+    }
+  });
+
+  let executed = false;
+  await assert.rejects(() => client.authorizeAndExecute({
+    action: ACTION,
+    artifact,
+    audience: "payments-executor",
+    publicKeys: {
+      [artifact.payload.keyId]: Buffer.from(keyPair.publicKey).toString("base64")
+    },
+    now: 1900000000,
+    execute: async () => {
+      executed = true;
+      return {};
+    }
+  }), /expired/i);
+  assert.equal(executed, false);
 });
 
 function createArtifact({

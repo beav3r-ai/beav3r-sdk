@@ -3,11 +3,27 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.normalizeExecutionAuthorizationAction = normalizeExecutionAuthorizationAction;
 exports.verifyExecutionAuthorization = verifyExecutionAuthorization;
 exports.isValidExecutionAuthorization = isValidExecutionAuthorization;
 const buffer_1 = require("buffer");
 const tweetnacl_1 = __importDefault(require("tweetnacl"));
 const protocol_1 = require("@beav3r/protocol");
+function normalizeExecutionAuthorizationAction(action) {
+    const normalizedPayload = action.payload && typeof action.payload === "object" && !Array.isArray(action.payload)
+        ? { ...action.payload }
+        : action.payload;
+    if (normalizedPayload &&
+        typeof normalizedPayload === "object" &&
+        !Array.isArray(normalizedPayload) &&
+        "presentation" in normalizedPayload) {
+        delete normalizedPayload.presentation;
+    }
+    return {
+        ...action,
+        payload: normalizedPayload
+    };
+}
 function verifyExecutionAuthorization(input) {
     if (input.artifact.algorithm && input.artifact.algorithm !== "ed25519") {
         throw new Error(`Execution authorization signature algorithm "${input.artifact.algorithm}" is not supported; expected "ed25519"`);
@@ -30,10 +46,12 @@ function verifyExecutionAuthorization(input) {
     if (input.artifact.payload.audience !== input.audience) {
         throw new Error(`Execution authorization audience mismatch: expected "${input.audience}", got "${input.artifact.payload.audience}"`);
     }
-    if (input.artifact.payload.decision !== "approved" && input.artifact.payload.decision !== "executed") {
-        throw new Error(`Execution authorization decision must be "approved" or "executed", got "${input.artifact.payload.decision}"`);
+    if (input.artifact.payload.decision !== "allow" &&
+        input.artifact.payload.decision !== "approved" &&
+        input.artifact.payload.decision !== "executed") {
+        throw new Error(`Execution authorization decision must be "allow", "approved", or "executed", got "${input.artifact.payload.decision}"`);
     }
-    const expectedActionHash = (0, protocol_1.hashAction)(input.action);
+    const expectedActionHash = (0, protocol_1.hashAction)(normalizeExecutionAuthorizationAction(input.action));
     if (input.artifact.payload.actionHash !== expectedActionHash) {
         throw new Error("Execution authorization actionHash does not match the provided action input");
     }

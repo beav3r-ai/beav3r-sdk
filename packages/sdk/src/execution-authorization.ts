@@ -2,7 +2,7 @@ import { Buffer } from "buffer";
 import nacl from "tweetnacl";
 import { canonicalize, hashAction, type ActionRequest } from "@beav3r/protocol";
 
-export type ExecutionAuthorizationDecision = "approved" | "executed" | string;
+export type ExecutionAuthorizationDecision = "allow" | "approved" | "executed" | string;
 
 export type ExecutionAuthorizationArtifactPayload = {
   version: string;
@@ -39,6 +39,27 @@ export type VerifyExecutionAuthorizationInput = {
   now?: number;
 };
 
+export function normalizeExecutionAuthorizationAction(action: ActionRequest): ActionRequest {
+  const normalizedPayload =
+    action.payload && typeof action.payload === "object" && !Array.isArray(action.payload)
+      ? { ...action.payload }
+      : action.payload;
+
+  if (
+    normalizedPayload &&
+    typeof normalizedPayload === "object" &&
+    !Array.isArray(normalizedPayload) &&
+    "presentation" in normalizedPayload
+  ) {
+    delete (normalizedPayload as Record<string, unknown>).presentation;
+  }
+
+  return {
+    ...action,
+    payload: normalizedPayload
+  };
+}
+
 export function verifyExecutionAuthorization(
   input: VerifyExecutionAuthorizationInput
 ): ExecutionAuthorizationArtifactPayload {
@@ -73,13 +94,17 @@ export function verifyExecutionAuthorization(
     );
   }
 
-  if (input.artifact.payload.decision !== "approved" && input.artifact.payload.decision !== "executed") {
+  if (
+    input.artifact.payload.decision !== "allow" &&
+    input.artifact.payload.decision !== "approved" &&
+    input.artifact.payload.decision !== "executed"
+  ) {
     throw new Error(
-      `Execution authorization decision must be "approved" or "executed", got "${input.artifact.payload.decision}"`
+      `Execution authorization decision must be "allow", "approved", or "executed", got "${input.artifact.payload.decision}"`
     );
   }
 
-  const expectedActionHash = hashAction(input.action);
+  const expectedActionHash = hashAction(normalizeExecutionAuthorizationAction(input.action));
   if (input.artifact.payload.actionHash !== expectedActionHash) {
     throw new Error("Execution authorization actionHash does not match the provided action input");
   }

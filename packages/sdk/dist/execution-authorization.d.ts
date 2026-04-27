@@ -1,5 +1,5 @@
 import { type ActionRequest } from "@beav3r/protocol";
-export type ExecutionAuthorizationDecision = "approved" | "executed" | string;
+export type ExecutionAuthorizationDecision = "allow" | "approved" | "executed" | string;
 export type ExecutionAuthorizationArtifactPayload = {
     version: string;
     artifactId: string;
@@ -30,6 +30,7 @@ export type VerifyExecutionAuthorizationInput = {
     publicKeys: ExecutionAuthorizationKeySet;
     now?: number;
 };
+export declare function normalizeExecutionAuthorizationAction(action: ActionRequest): ActionRequest;
 export declare function verifyExecutionAuthorization(input: VerifyExecutionAuthorizationInput): ExecutionAuthorizationArtifactPayload;
 export declare function isValidExecutionAuthorization(input: VerifyExecutionAuthorizationInput): boolean;
 //# sourceMappingURL=execution-authorization.d.ts.map

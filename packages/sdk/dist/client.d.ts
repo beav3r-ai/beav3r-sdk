@@ -1,5 +1,5 @@
 import type { ActionRequest, ApprovalReject, ApprovalToken, DeviceInput, PolicyRule, QueueItem } from "@beav3r/protocol";
-import type { SignedExecutionAuthorizationArtifact } from "./execution-authorization";
+import { type ExecutionAuthorizationArtifactPayload, type ExecutionAuthorizationKeySet, type SignedExecutionAuthorizationArtifact } from "./execution-authorization";
 type RegisterDeviceInput = DeviceInput & {
     secretKeyBase64?: string;
     pairingToken?: string;
@@ -118,6 +118,40 @@ export type MintExecutionAuthorizationInput = {
     actionId: string;
     audience: string;
 };
+export type RedeemExecutionAuthorizationInput = {
+    actionId?: string;
+    artifact: SignedExecutionAuthorizationArtifact;
+    audience: string;
+    actionHash: string;
+};
+export type ExecutionAuthorizationRedemptionResult = {
+    status: "redeemed";
+    artifactId: string;
+    actionId: string;
+    redeemedAt: number;
+};
+export type AuthorizeAndExecuteInput<T> = {
+    action: ActionRequest;
+    artifact: SignedExecutionAuthorizationArtifact;
+    audience: string;
+    publicKeys: ExecutionAuthorizationKeySet;
+    now?: number;
+    execute: (context: {
+        action: ActionRequest;
+        actionHash: string;
+        artifact: SignedExecutionAuthorizationArtifact;
+        authorization: ExecutionAuthorizationArtifactPayload;
+        redemption: ExecutionAuthorizationRedemptionResult;
+    }) => Promise<T> | T;
+};
+export type AuthorizeAndExecuteResult<T> = {
+    actionId: string;
+    actionHash: string;
+    artifactId: string;
+    authorization: ExecutionAuthorizationArtifactPayload;
+    redemption: ExecutionAuthorizationRedemptionResult;
+    executionResult: T;
+};
 export type ListPendingActionsOptions = {
     deviceId?: string;
     secretKeyBase64?: string;
@@ -138,6 +172,12 @@ export type ActionReadOptions = {
     deviceId?: string;
     secretKeyBase64?: string;
 };
+export type ActionRecord = ActionRequest & {
+    actionHash: string;
+    status: string;
+    reason?: string;
+    evaluation: ActionEvaluation;
+};
 export declare class Beav3rDeniedError extends Error {
     readonly actionId: string;
     constructor(actionId: string, reason?: string);
@@ -151,17 +191,15 @@ export declare class Beav3r {
     guard(input: RequestActionInput): Promise<GuardResult>;
     guardAndExit(input: RequestActionInput): Promise<GuardResult>;
     mintExecutionAuthorization(input: MintExecutionAuthorizationInput): Promise<SignedExecutionAuthorizationArtifact>;
+    redeemExecutionAuthorization(input: RedeemExecutionAuthorizationInput): Promise<ExecutionAuthorizationRedemptionResult>;
+    authorizeAndExecute<T>(input: AuthorizeAndExecuteInput<T>): Promise<AuthorizeAndExecuteResult<T>>;
     private requireAPIKey;
     private buildAction;
     guardAndWait(input: RequestActionInput, options?: GuardWaitOptions): Promise<GuardAndWaitResult>;
     guardOrThrow(input: RequestActionInput): Promise<Exclude<GuardResult, DeniedActionResult>>;
     getActionStatus(actionId: string, options?: ActionReadOptions): Promise<ActionStatusResult>;
-    getAction(actionId: string, options?: ActionReadOptions): Promise<ActionRequest & {
-        actionHash: string;
-        status: string;
-        reason?: string;
-        evaluation: ActionEvaluation;
-    }>;
+    getAction(actionId: string, options?: ActionReadOptions): Promise<ActionRecord>;
+    getExactActionRequest(actionId: string, options?: ActionReadOptions): Promise<ActionRequest>;
     listPendingActions(options?: ListPendingActionsOptions): Promise<{
         items: QueueItem[];
     }>;
@@ -188,18 +226,14 @@ export declare class Beav3r {
         actionId: string;
     }>;
     getActionStatusWithOptions(actionId: string, options?: ActionReadOptions): Promise<ActionStatusResult>;
-    getActionWithOptions(actionId: string, options?: ActionReadOptions): Promise<ActionRequest & {
-        actionHash: string;
-        status: string;
-        reason?: string;
-        evaluation: ActionEvaluation;
-    }>;
+    getActionWithOptions(actionId: string, options?: ActionReadOptions): Promise<ActionRecord>;
     private buildActionReadQuery;
     private attachExecutionAuthorizationIfNeeded;
     private buildSignedDeviceQuery;
     private completeRejection;
     private request;
 }
+export declare function toExactActionRequest(action: ActionRequest | ActionRecord): ActionRequest;
 export { Beav3r as BeaverClient, Beav3rDeniedError as BeaverDeniedError };
 export type BeaverClientOptions = Beav3rOptions;
 //# sourceMappingURL=client.d.ts.map

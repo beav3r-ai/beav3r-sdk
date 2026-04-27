@@ -4,8 +4,10 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BeaverDeniedError = exports.BeaverClient = exports.Beav3r = exports.Beav3rDeniedError = void 0;
+exports.toExactActionRequest = toExactActionRequest;
 const buffer_1 = require("buffer");
 const tweetnacl_1 = __importDefault(require("tweetnacl"));
+const execution_authorization_1 = require("./execution-authorization");
 class Beav3rDeniedError extends Error {
     actionId;
     constructor(actionId, reason) {
@@ -64,6 +66,78 @@ class Beav3r {
                 audience
             })
         });
+    }
+    async redeemExecutionAuthorization(input) {
+        this.requireAPIKey("redeemExecutionAuthorization");
+        const actionId = input.actionId?.trim() || input.artifact?.payload?.actionId?.trim();
+        const audience = input.audience?.trim();
+        const actionHash = input.actionHash?.trim();
+        if (!actionId) {
+            throw new Error("redeemExecutionAuthorization requires a non-empty actionId");
+        }
+        if (!input.artifact || typeof input.artifact !== "object" || Array.isArray(input.artifact)) {
+            throw new Error("redeemExecutionAuthorization requires a structured artifact object");
+        }
+        if (!audience) {
+            throw new Error("redeemExecutionAuthorization requires a non-empty audience");
+        }
+        if (!actionHash) {
+            throw new Error("redeemExecutionAuthorization requires a non-empty actionHash");
+        }
+        return this.request(`/actions/${encodeURIComponent(actionId)}/execution-authorization/redeem`, {
+            method: "POST",
+            body: JSON.stringify({
+                artifact: input.artifact,
+                audience,
+                actionHash
+            })
+        });
+    }
+    async authorizeAndExecute(input) {
+        this.requireAPIKey("authorizeAndExecute");
+        if (!input.action || typeof input.action !== "object") {
+            throw new Error("authorizeAndExecute requires an exact action object");
+        }
+        if (!input.artifact || typeof input.artifact !== "object" || Array.isArray(input.artifact)) {
+            throw new Error("authorizeAndExecute requires a structured artifact object");
+        }
+        if (!input.audience?.trim()) {
+            throw new Error("authorizeAndExecute requires a non-empty audience");
+        }
+        if (!input.publicKeys) {
+            throw new Error("authorizeAndExecute requires trusted public keys");
+        }
+        if (typeof input.execute !== "function") {
+            throw new Error("authorizeAndExecute requires an execute callback");
+        }
+        const authorization = (0, execution_authorization_1.verifyExecutionAuthorization)({
+            artifact: input.artifact,
+            action: input.action,
+            audience: input.audience.trim(),
+            publicKeys: input.publicKeys,
+            now: input.now
+        });
+        const redemption = await this.redeemExecutionAuthorization({
+            actionId: authorization.actionId,
+            artifact: input.artifact,
+            audience: input.audience.trim(),
+            actionHash: authorization.actionHash
+        });
+        const executionResult = await input.execute({
+            action: input.action,
+            actionHash: authorization.actionHash,
+            artifact: input.artifact,
+            authorization,
+            redemption
+        });
+        return {
+            actionId: authorization.actionId,
+            actionHash: authorization.actionHash,
+            artifactId: redemption.artifactId,
+            authorization,
+            redemption,
+            executionResult
+        };
     }
     requireAPIKey(methodName) {
         if (this.options.apiKey?.trim()) {
@@ -138,6 +212,9 @@ class Beav3r {
     }
     async getAction(actionId, options) {
         return this.getActionWithOptions(actionId, options);
+    }
+    async getExactActionRequest(actionId, options) {
+        return toExactActionRequest(await this.getActionWithOptions(actionId, options));
     }
     async listPendingActions(options) {
         const query = {
@@ -294,6 +371,20 @@ class Beav3r {
 }
 exports.Beav3r = Beav3r;
 exports.BeaverClient = Beav3r;
+function toExactActionRequest(action) {
+    return {
+        actionId: action.actionId,
+        agentId: action.agentId,
+        actionType: action.actionType,
+        payload: {
+            ...(action.payload ?? {})
+        },
+        attributes: action.attributes ?? {},
+        timestamp: action.timestamp,
+        nonce: action.nonce,
+        expiry: action.expiry
+    };
+}
 function signUtf8Message(message, secretKeyBase64) {
     const signature = tweetnacl_1.default.sign.detached(buffer_1.Buffer.from(message, "utf8"), new Uint8Array(buffer_1.Buffer.from(secretKeyBase64, "base64")));
     return buffer_1.Buffer.from(signature).toString("base64");

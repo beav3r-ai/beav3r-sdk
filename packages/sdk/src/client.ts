@@ -8,7 +8,12 @@ import type {
   PolicyRule,
   QueueItem
 } from "@beav3r/protocol";
-import type { SignedExecutionAuthorizationArtifact } from "./execution-authorization";
+import {
+  verifyExecutionAuthorization,
+  type ExecutionAuthorizationArtifactPayload,
+  type ExecutionAuthorizationKeySet,
+  type SignedExecutionAuthorizationArtifact
+} from "./execution-authorization";
 
 type RegisterDeviceInput = DeviceInput & {
   secretKeyBase64?: string;
@@ -97,6 +102,44 @@ export type MintExecutionAuthorizationInput = {
   audience: string;
 };
 
+export type RedeemExecutionAuthorizationInput = {
+  actionId?: string;
+  artifact: SignedExecutionAuthorizationArtifact;
+  audience: string;
+  actionHash: string;
+};
+
+export type ExecutionAuthorizationRedemptionResult = {
+  status: "redeemed";
+  artifactId: string;
+  actionId: string;
+  redeemedAt: number;
+};
+
+export type AuthorizeAndExecuteInput<T> = {
+  action: ActionRequest;
+  artifact: SignedExecutionAuthorizationArtifact;
+  audience: string;
+  publicKeys: ExecutionAuthorizationKeySet;
+  now?: number;
+  execute: (context: {
+    action: ActionRequest;
+    actionHash: string;
+    artifact: SignedExecutionAuthorizationArtifact;
+    authorization: ExecutionAuthorizationArtifactPayload;
+    redemption: ExecutionAuthorizationRedemptionResult;
+  }) => Promise<T> | T;
+};
+
+export type AuthorizeAndExecuteResult<T> = {
+  actionId: string;
+  actionHash: string;
+  artifactId: string;
+  authorization: ExecutionAuthorizationArtifactPayload;
+  redemption: ExecutionAuthorizationRedemptionResult;
+  executionResult: T;
+};
+
 export type ListPendingActionsOptions = {
   deviceId?: string;
   secretKeyBase64?: string;
@@ -119,6 +162,13 @@ export type ActionReadOptions = {
   actionHash?: string;
   deviceId?: string;
   secretKeyBase64?: string;
+};
+
+export type ActionRecord = ActionRequest & {
+  actionHash: string;
+  status: string;
+  reason?: string;
+  evaluation: ActionEvaluation;
 };
 
 export class Beav3rDeniedError extends Error {
@@ -186,6 +236,92 @@ export class Beav3r {
         audience
       })
     });
+  }
+
+  async redeemExecutionAuthorization(
+    input: RedeemExecutionAuthorizationInput
+  ): Promise<ExecutionAuthorizationRedemptionResult> {
+    this.requireAPIKey("redeemExecutionAuthorization");
+
+    const actionId = input.actionId?.trim() || input.artifact?.payload?.actionId?.trim();
+    const audience = input.audience?.trim();
+    const actionHash = input.actionHash?.trim();
+
+    if (!actionId) {
+      throw new Error("redeemExecutionAuthorization requires a non-empty actionId");
+    }
+    if (!input.artifact || typeof input.artifact !== "object" || Array.isArray(input.artifact)) {
+      throw new Error("redeemExecutionAuthorization requires a structured artifact object");
+    }
+    if (!audience) {
+      throw new Error("redeemExecutionAuthorization requires a non-empty audience");
+    }
+    if (!actionHash) {
+      throw new Error("redeemExecutionAuthorization requires a non-empty actionHash");
+    }
+
+    return this.request(`/actions/${encodeURIComponent(actionId)}/execution-authorization/redeem`, {
+      method: "POST",
+      body: JSON.stringify({
+        artifact: input.artifact,
+        audience,
+        actionHash
+      })
+    });
+  }
+
+  async authorizeAndExecute<T>(
+    input: AuthorizeAndExecuteInput<T>
+  ): Promise<AuthorizeAndExecuteResult<T>> {
+    this.requireAPIKey("authorizeAndExecute");
+
+    if (!input.action || typeof input.action !== "object") {
+      throw new Error("authorizeAndExecute requires an exact action object");
+    }
+    if (!input.artifact || typeof input.artifact !== "object" || Array.isArray(input.artifact)) {
+      throw new Error("authorizeAndExecute requires a structured artifact object");
+    }
+    if (!input.audience?.trim()) {
+      throw new Error("authorizeAndExecute requires a non-empty audience");
+    }
+    if (!input.publicKeys) {
+      throw new Error("authorizeAndExecute requires trusted public keys");
+    }
+    if (typeof input.execute !== "function") {
+      throw new Error("authorizeAndExecute requires an execute callback");
+    }
+
+    const authorization = verifyExecutionAuthorization({
+      artifact: input.artifact,
+      action: input.action,
+      audience: input.audience.trim(),
+      publicKeys: input.publicKeys,
+      now: input.now
+    });
+
+    const redemption = await this.redeemExecutionAuthorization({
+      actionId: authorization.actionId,
+      artifact: input.artifact,
+      audience: input.audience.trim(),
+      actionHash: authorization.actionHash
+    });
+
+    const executionResult = await input.execute({
+      action: input.action,
+      actionHash: authorization.actionHash,
+      artifact: input.artifact,
+      authorization,
+      redemption
+    });
+
+    return {
+      actionId: authorization.actionId,
+      actionHash: authorization.actionHash,
+      artifactId: redemption.artifactId,
+      authorization,
+      redemption,
+      executionResult
+    };
   }
 
   private requireAPIKey(methodName: string): void {
@@ -276,8 +412,15 @@ export class Beav3r {
   async getAction(
     actionId: string,
     options?: ActionReadOptions
-  ): Promise<ActionRequest & { actionHash: string; status: string; reason?: string; evaluation: ActionEvaluation }> {
+  ): Promise<ActionRecord> {
     return this.getActionWithOptions(actionId, options);
+  }
+
+  async getExactActionRequest(
+    actionId: string,
+    options?: ActionReadOptions
+  ): Promise<ActionRequest> {
+    return toExactActionRequest(await this.getActionWithOptions(actionId, options));
   }
 
   async listPendingActions(options?: ListPendingActionsOptions): Promise<{ items: QueueItem[] }> {
@@ -368,7 +511,7 @@ export class Beav3r {
   async getActionWithOptions(
     actionId: string,
     options?: ActionReadOptions
-  ): Promise<ActionRequest & { actionHash: string; status: string; reason?: string; evaluation: ActionEvaluation }> {
+  ): Promise<ActionRecord> {
     const query = this.buildActionReadQuery(`action-read:${actionId}`, options);
     return this.request(`/actions/${actionId}${buildQueryString(query)}`);
   }
@@ -479,6 +622,21 @@ export class Beav3r {
     }
     return body;
   }
+}
+
+export function toExactActionRequest(action: ActionRequest | ActionRecord): ActionRequest {
+  return {
+    actionId: action.actionId,
+    agentId: action.agentId,
+    actionType: action.actionType,
+    payload: {
+      ...(action.payload ?? {})
+    },
+    attributes: action.attributes ?? {},
+    timestamp: action.timestamp,
+    nonce: action.nonce,
+    expiry: action.expiry
+  };
 }
 
 function signUtf8Message(message: string, secretKeyBase64: string): string {
