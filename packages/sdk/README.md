@@ -78,6 +78,28 @@ await client.redeemExecutionAuthorization({
 
 The `publicKeys` map must be keyed by the server signing `keyId` carried in the artifact payload, not by audience unless your deployment intentionally makes those values the same.
 
+## Well-Known Verification Keys
+
+For dynamic key discovery, Beav3r servers expose:
+
+`GET /.well-known/execution-authorization-keys`
+
+Expected response shape:
+
+```json
+{
+  "items": [
+    {
+      "keyId": "exec-key-id",
+      "algorithm": "Ed25519",
+      "publicKey": "BASE64_ED25519_PUBLIC_KEY"
+    }
+  ]
+}
+```
+
+You can convert this into the `publicKeys` map used by `verifyExecutionAuthorization(...)` and `authorizeAndExecute(...)`.
+
 ## Recommended Executor Flow
 
 Most integrators should not wire verify -> redeem -> execute manually in every service. Use `authorizeAndExecute(...)`:
@@ -104,6 +126,67 @@ This helper:
 - only then runs the executor callback
 
 If the callback fails after redemption, the authorization has still been spent. That is expected and should be reflected in your execution lifecycle.
+
+## Onchain Authorization Helpers
+
+The SDK exposes helpers for actor registration, `/onchain/*` authorization APIs, local digest verification, and `executeWithAuth(...)` transaction preparation:
+
+```ts
+const registered = await client.registerOnchainActor(
+  {
+    projectId: "proj_123",
+    type: "smart_account",
+    label: "Treasury Safe",
+    chainId: 8453,
+    accountAddress: "0x1111111111111111111111111111111111111111",
+    executorAddress: "0x3333333333333333333333333333333333333333"
+  },
+  {
+    keyId: "ops-key",
+    signerAddress: "0x4444444444444444444444444444444444444444"
+  }
+);
+
+const auth = await client.authorizeOnchainAction({
+  projectId: "proj_123",
+  actorId: registered.actor.id,
+  account: registered.actor.accountAddress,
+  to: "0x2222222222222222222222222222222222222222",
+  value: "0",
+  data: "0x1234",
+  chainId: registered.actor.chainId,
+  nonce: 7,
+  executor: registered.actor.executorAddress
+});
+
+const loaded = await client.getOnchainAuthorization(auth.item.authorizationId);
+
+const prepared = prepareOnchainExecution({
+  actor: registered.actor,
+  action: {
+    to: auth.item.request.to,
+    value: auth.item.request.value,
+    data: auth.item.request.data,
+    nonce: auth.item.request.nonce
+  },
+  artifact: loaded.item.artifact
+});
+
+verifyOnchainAuthorization({
+  artifact: loaded.item.artifact,
+  request: {
+    account: registered.actor.accountAddress,
+    to: auth.item.request.to,
+    value: auth.item.request.value,
+    data: auth.item.request.data,
+    chainId: registered.actor.chainId,
+    nonce: auth.item.request.nonce,
+    executor: registered.actor.executorAddress
+  }
+});
+
+const calldata = prepared.calldata;
+```
 
 ## Compatibility note
 

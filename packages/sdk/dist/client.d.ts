@@ -130,6 +130,11 @@ export type ExecutionAuthorizationRedemptionResult = {
     actionId: string;
     redeemedAt: number;
 };
+export type ExecutionAuthorizationVerificationKey = {
+    keyId: string;
+    algorithm: string;
+    publicKey: string;
+};
 export type AuthorizeAndExecuteInput<T> = {
     action: ActionRequest;
     artifact: SignedExecutionAuthorizationArtifact;
@@ -178,6 +183,126 @@ export type ActionRecord = ActionRequest & {
     reason?: string;
     evaluation: ActionEvaluation;
 };
+export type OnchainAuthorizeActionInput = {
+    account: string;
+    to: string;
+    value: string;
+    data: string;
+    chainId: number;
+    nonce: number;
+    expiresAt?: number;
+    executor: string;
+    projectId?: string;
+    actorId?: string;
+};
+export type OnchainActorType = "wallet" | "smart_account";
+export type OnchainActor = {
+    id: string;
+    projectId: string;
+    type: OnchainActorType;
+    label: string;
+    chainId: number;
+    accountAddress: string;
+    executorAddress: string;
+    metadataJson: string;
+    createdAt: number;
+    updatedAt: number;
+};
+export type CreateOnchainActorInput = {
+    projectId: string;
+    type: OnchainActorType;
+    label: string;
+    chainId: number;
+    accountAddress: string;
+    executorAddress: string;
+    metadataJson?: string;
+};
+export type UpdateOnchainActorInput = {
+    projectId: string;
+    actorId: string;
+    type: OnchainActorType;
+    label: string;
+    chainId: number;
+    accountAddress: string;
+    executorAddress: string;
+    metadataJson?: string;
+};
+export type OnchainAuthorizationPayload = {
+    version: string;
+    actionHash: string;
+    account: string;
+    executor: string;
+    chainId: number;
+    nonce: number;
+    expiresAt: number;
+    keyId: string;
+};
+export type OnchainAuthorizationArtifact = {
+    authorizationId: string;
+    payload: OnchainAuthorizationPayload;
+    signature: string;
+    digest: string;
+    signerAddress: string;
+};
+export type OnchainAuthorizationRecord = {
+    authorizationId: string;
+    projectId?: string;
+    actorId?: string;
+    approver?: string;
+    actionHash: string;
+    keyId: string;
+    request: {
+        projectId?: string;
+        actorId?: string;
+        account: string;
+        to: string;
+        value: string;
+        data: string;
+        chainId: number;
+        nonce: number;
+        expiresAt: number;
+        executor: string;
+    };
+    artifact: OnchainAuthorizationArtifact;
+    createdAt: number;
+};
+export type OnchainAccountKey = {
+    account: string;
+    keyId: string;
+    onchainKeyId: string;
+    signerAddress: string;
+    createdAt: number;
+    updatedAt: number;
+};
+export type UpsertOnchainAccountKeyInput = {
+    account: string;
+    keyId?: string;
+    signerAddress: string;
+};
+export type VerifyOnchainAuthorizationInput = {
+    artifact: OnchainAuthorizationArtifact;
+    request: Pick<OnchainAuthorizeActionInput, "account" | "to" | "value" | "data" | "chainId" | "nonce" | "executor">;
+};
+export type PreparedExecuteWithAuthCall = {
+    to: string;
+    value: bigint;
+    data: string;
+    auth: {
+        actionHash: string;
+        account: string;
+        executor: string;
+        chainId: bigint;
+        nonce: bigint;
+        expiresAt: bigint;
+        keyId: string;
+    };
+    signature: string;
+};
+export type PrepareOnchainExecutionInput = {
+    actor: Pick<OnchainActor, "accountAddress" | "executorAddress" | "chainId">;
+    action: Pick<OnchainAuthorizeActionInput, "to" | "value" | "data" | "nonce">;
+    artifact: OnchainAuthorizationArtifact;
+};
 export declare class Beav3rDeniedError extends Error {
     readonly actionId: string;
     constructor(actionId: string, reason?: string);
@@ -193,6 +318,54 @@ export declare class Beav3r {
     mintExecutionAuthorization(input: MintExecutionAuthorizationInput): Promise<SignedExecutionAuthorizationArtifact>;
     redeemExecutionAuthorization(input: RedeemExecutionAuthorizationInput): Promise<ExecutionAuthorizationRedemptionResult>;
     authorizeAndExecute<T>(input: AuthorizeAndExecuteInput<T>): Promise<AuthorizeAndExecuteResult<T>>;
+    getExecutionAuthorizationKeys(): Promise<{
+        items: ExecutionAuthorizationVerificationKey[];
+    }>;
+    authorizeOnchainAction(input: OnchainAuthorizeActionInput): Promise<{
+        status: "authorized";
+        item: OnchainAuthorizationRecord;
+    }>;
+    getOnchainAuthorization(authorizationId: string, options?: {
+        projectId?: string;
+    }): Promise<{
+        item: OnchainAuthorizationRecord;
+    }>;
+    upsertOnchainAccountKey(input: UpsertOnchainAccountKeyInput): Promise<{
+        status: "upserted";
+        item: OnchainAccountKey;
+    }>;
+    listOnchainAccountKeys(account: string): Promise<{
+        items: OnchainAccountKey[];
+        configuredSigner: string;
+        configuredSignerId: string;
+    }>;
+    deleteOnchainAccountKey(account: string, keyId: string): Promise<{
+        status: "deleted";
+    }>;
+    listOnchainActors(projectId: string): Promise<{
+        items: OnchainActor[];
+    }>;
+    getOnchainActor(projectId: string, actorId: string): Promise<{
+        item: OnchainActor;
+    }>;
+    createOnchainActor(input: CreateOnchainActorInput): Promise<{
+        status: "created";
+        item: OnchainActor;
+    }>;
+    updateOnchainActor(input: UpdateOnchainActorInput): Promise<{
+        status: "updated";
+        item: OnchainActor;
+    }>;
+    deleteOnchainActor(projectId: string, actorId: string): Promise<{
+        status: "deleted";
+    }>;
+    registerOnchainActor(actor: CreateOnchainActorInput, options?: {
+        keyId?: string;
+        signerAddress?: string;
+    }): Promise<{
+        actor: OnchainActor;
+        key?: OnchainAccountKey;
+    }>;
     private requireAPIKey;
     private buildAction;
     guardAndWait(input: RequestActionInput, options?: GuardWaitOptions): Promise<GuardAndWaitResult>;
@@ -233,6 +406,17 @@ export declare class Beav3r {
     private completeRejection;
     private request;
 }
+export declare function computeOnchainActionHash(input: Pick<OnchainAuthorizeActionInput, "account" | "to" | "value" | "data" | "chainId" | "nonce" | "expiresAt" | "executor">): string;
+export declare function computeOnchainAuthorizationDigest(artifact: OnchainAuthorizationArtifact): string;
+export declare function verifyOnchainAuthorization(input: VerifyOnchainAuthorizationInput): {
+    actionHash: string;
+    digest: string;
+};
+export declare function prepareExecuteWithAuthCall(request: Pick<OnchainAuthorizeActionInput, "to" | "value" | "data">, artifact: OnchainAuthorizationArtifact): PreparedExecuteWithAuthCall;
+export declare function encodeExecuteWithAuthCalldata(input: PreparedExecuteWithAuthCall): string;
+export declare function prepareOnchainExecution(input: PrepareOnchainExecutionInput): PreparedExecuteWithAuthCall & {
+    calldata: string;
+};
 export declare function toExactActionRequest(action: ActionRequest | ActionRecord): ActionRequest;
 export { Beav3r as BeaverClient, Beav3rDeniedError as BeaverDeniedError };
 export type BeaverClientOptions = Beav3rOptions;

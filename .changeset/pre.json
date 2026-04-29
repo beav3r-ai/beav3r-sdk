@@ -1,0 +1,12 @@
+{
+  "mode": "pre",
+  "tag": "beta",
+  "initialVersions": {
+    "@beav3r/protocol": "2.0.0",
+    "@beav3r/sdk": "2.0.1"
+  },
+  "changesets": [
+    "late-chefs-retire",
+    "onchain-rn-crypto-fix"
+  ]
+}

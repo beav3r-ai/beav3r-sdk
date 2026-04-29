@@ -1,5 +1,6 @@
 import { Buffer } from "buffer";
 import nacl from "tweetnacl";
+import { keccak_256 } from "@noble/hashes/sha3";
 import type {
   ActionRequest,
   ApprovalReject,
@@ -116,6 +117,12 @@ export type ExecutionAuthorizationRedemptionResult = {
   redeemedAt: number;
 };
 
+export type ExecutionAuthorizationVerificationKey = {
+  keyId: string;
+  algorithm: string;
+  publicKey: string;
+};
+
 export type AuthorizeAndExecuteInput<T> = {
   action: ActionRequest;
   artifact: SignedExecutionAuthorizationArtifact;
@@ -169,6 +176,139 @@ export type ActionRecord = ActionRequest & {
   status: string;
   reason?: string;
   evaluation: ActionEvaluation;
+};
+
+export type OnchainAuthorizeActionInput = {
+  account: string;
+  to: string;
+  value: string;
+  data: string;
+  chainId: number;
+  nonce: number;
+  expiresAt?: number;
+  executor: string;
+  projectId?: string;
+  actorId?: string;
+};
+
+export type OnchainActorType = "wallet" | "smart_account";
+
+export type OnchainActor = {
+  id: string;
+  projectId: string;
+  type: OnchainActorType;
+  label: string;
+  chainId: number;
+  accountAddress: string;
+  executorAddress: string;
+  metadataJson: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type CreateOnchainActorInput = {
+  projectId: string;
+  type: OnchainActorType;
+  label: string;
+  chainId: number;
+  accountAddress: string;
+  executorAddress: string;
+  metadataJson?: string;
+};
+
+export type UpdateOnchainActorInput = {
+  projectId: string;
+  actorId: string;
+  type: OnchainActorType;
+  label: string;
+  chainId: number;
+  accountAddress: string;
+  executorAddress: string;
+  metadataJson?: string;
+};
+
+export type OnchainAuthorizationPayload = {
+  version: string;
+  actionHash: string;
+  account: string;
+  executor: string;
+  chainId: number;
+  nonce: number;
+  expiresAt: number;
+  keyId: string;
+};
+
+export type OnchainAuthorizationArtifact = {
+  authorizationId: string;
+  payload: OnchainAuthorizationPayload;
+  signature: string;
+  digest: string;
+  signerAddress: string;
+};
+
+export type OnchainAuthorizationRecord = {
+  authorizationId: string;
+  projectId?: string;
+  actorId?: string;
+  approver?: string;
+  actionHash: string;
+  keyId: string;
+  request: {
+    projectId?: string;
+    actorId?: string;
+    account: string;
+    to: string;
+    value: string;
+    data: string;
+    chainId: number;
+    nonce: number;
+    expiresAt: number;
+    executor: string;
+  };
+  artifact: OnchainAuthorizationArtifact;
+  createdAt: number;
+};
+
+export type OnchainAccountKey = {
+  account: string;
+  keyId: string;
+  onchainKeyId: string;
+  signerAddress: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type UpsertOnchainAccountKeyInput = {
+  account: string;
+  keyId?: string;
+  signerAddress: string;
+};
+
+export type VerifyOnchainAuthorizationInput = {
+  artifact: OnchainAuthorizationArtifact;
+  request: Pick<OnchainAuthorizeActionInput, "account" | "to" | "value" | "data" | "chainId" | "nonce" | "executor">;
+};
+
+export type PreparedExecuteWithAuthCall = {
+  to: string;
+  value: bigint;
+  data: string;
+  auth: {
+    actionHash: string;
+    account: string;
+    executor: string;
+    chainId: bigint;
+    nonce: bigint;
+    expiresAt: bigint;
+    keyId: string;
+  };
+  signature: string;
+};
+
+export type PrepareOnchainExecutionInput = {
+  actor: Pick<OnchainActor, "accountAddress" | "executorAddress" | "chainId">;
+  action: Pick<OnchainAuthorizeActionInput, "to" | "value" | "data" | "nonce">;
+  artifact: OnchainAuthorizationArtifact;
 };
 
 export class Beav3rDeniedError extends Error {
@@ -322,6 +462,197 @@ export class Beav3r {
       redemption,
       executionResult
     };
+  }
+
+  async getExecutionAuthorizationKeys(): Promise<{ items: ExecutionAuthorizationVerificationKey[] }> {
+    this.requireAPIKey("getExecutionAuthorizationKeys");
+    return this.request("/.well-known/execution-authorization-keys");
+  }
+
+  async authorizeOnchainAction(
+    input: OnchainAuthorizeActionInput
+  ): Promise<{ status: "authorized"; item: OnchainAuthorizationRecord }> {
+    this.requireAPIKey("authorizeOnchainAction");
+
+    if (!input.account?.trim()) {
+      throw new Error("authorizeOnchainAction requires a non-empty account");
+    }
+    if (!input.to?.trim()) {
+      throw new Error("authorizeOnchainAction requires a non-empty to address");
+    }
+    if (!input.value?.trim()) {
+      throw new Error("authorizeOnchainAction requires a non-empty value");
+    }
+    if (!input.data?.trim()) {
+      throw new Error("authorizeOnchainAction requires non-empty calldata");
+    }
+    if (!Number.isFinite(input.chainId) || input.chainId <= 0) {
+      throw new Error("authorizeOnchainAction requires chainId > 0");
+    }
+    if (!Number.isFinite(input.nonce) || input.nonce < 0) {
+      throw new Error("authorizeOnchainAction requires nonce >= 0");
+    }
+    if (!input.executor?.trim()) {
+      throw new Error("authorizeOnchainAction requires a non-empty executor address");
+    }
+
+    const query = buildQueryString({ projectId: input.projectId?.trim(), actorId: input.actorId?.trim() });
+    return this.request(`/onchain/actions/authorize${query}`, {
+      method: "POST",
+      body: JSON.stringify({
+        account: input.account.trim(),
+        to: input.to.trim(),
+        value: input.value.trim(),
+        data: input.data.trim(),
+        chainId: input.chainId,
+        nonce: input.nonce,
+        expiresAt: input.expiresAt ?? 0,
+        executor: input.executor.trim()
+      })
+    });
+  }
+
+  async getOnchainAuthorization(
+    authorizationId: string,
+    options?: { projectId?: string }
+  ): Promise<{ item: OnchainAuthorizationRecord }> {
+    this.requireAPIKey("getOnchainAuthorization");
+    const trimmedAuthorizationID = authorizationId.trim();
+    if (!trimmedAuthorizationID) {
+      throw new Error("getOnchainAuthorization requires a non-empty authorizationId");
+    }
+
+    const query = buildQueryString({ projectId: options?.projectId?.trim() });
+    return this.request(`/onchain/actions/${encodeURIComponent(trimmedAuthorizationID)}${query}`);
+  }
+
+  async upsertOnchainAccountKey(
+    input: UpsertOnchainAccountKeyInput
+  ): Promise<{ status: "upserted"; item: OnchainAccountKey }> {
+    this.requireAPIKey("upsertOnchainAccountKey");
+
+    const account = input.account?.trim() ?? "";
+    const signerAddress = input.signerAddress?.trim() ?? "";
+    const keyId = input.keyId?.trim();
+    if (!account) {
+      throw new Error("upsertOnchainAccountKey requires a non-empty account");
+    }
+    if (!signerAddress) {
+      throw new Error("upsertOnchainAccountKey requires a non-empty signerAddress");
+    }
+
+    return this.request(`/onchain/accounts/${encodeURIComponent(account)}/keys`, {
+      method: "POST",
+      body: JSON.stringify({
+        keyId,
+        signerAddress
+      })
+    });
+  }
+
+  async listOnchainAccountKeys(
+    account: string
+  ): Promise<{ items: OnchainAccountKey[]; configuredSigner: string; configuredSignerId: string }> {
+    this.requireAPIKey("listOnchainAccountKeys");
+    const trimmedAccount = account.trim();
+    if (!trimmedAccount) {
+      throw new Error("listOnchainAccountKeys requires a non-empty account");
+    }
+    return this.request(`/onchain/accounts/${encodeURIComponent(trimmedAccount)}/keys`);
+  }
+
+  async deleteOnchainAccountKey(
+    account: string,
+    keyId: string
+  ): Promise<{ status: "deleted" }> {
+    this.requireAPIKey("deleteOnchainAccountKey");
+    const trimmedAccount = account.trim();
+    const trimmedKeyID = keyId.trim();
+    if (!trimmedAccount) {
+      throw new Error("deleteOnchainAccountKey requires a non-empty account");
+    }
+    if (!trimmedKeyID) {
+      throw new Error("deleteOnchainAccountKey requires a non-empty keyId");
+    }
+    return this.request(`/onchain/accounts/${encodeURIComponent(trimmedAccount)}/keys/${encodeURIComponent(trimmedKeyID)}`, {
+      method: "DELETE"
+    });
+  }
+
+  async listOnchainActors(projectId: string): Promise<{ items: OnchainActor[] }> {
+    this.requireAPIKey("listOnchainActors");
+    const trimmedProjectID = projectId.trim();
+    if (!trimmedProjectID) {
+      throw new Error("listOnchainActors requires a non-empty projectId");
+    }
+    return this.request(`/onchain/actors/${encodeURIComponent(trimmedProjectID)}`);
+  }
+
+  async getOnchainActor(projectId: string, actorId: string): Promise<{ item: OnchainActor }> {
+    this.requireAPIKey("getOnchainActor");
+    const trimmedProjectID = projectId.trim();
+    const trimmedActorID = actorId.trim();
+    if (!trimmedProjectID) {
+      throw new Error("getOnchainActor requires a non-empty projectId");
+    }
+    if (!trimmedActorID) {
+      throw new Error("getOnchainActor requires a non-empty actorId");
+    }
+    return this.request(`/onchain/actors/${encodeURIComponent(trimmedProjectID)}/${encodeURIComponent(trimmedActorID)}`);
+  }
+
+  async createOnchainActor(input: CreateOnchainActorInput): Promise<{ status: "created"; item: OnchainActor }> {
+    this.requireAPIKey("createOnchainActor");
+    const payload = normalizeOnchainActorInput("createOnchainActor", input);
+    return this.request(`/onchain/actors/${encodeURIComponent(payload.projectId)}`, {
+      method: "POST",
+      body: JSON.stringify(payload.body)
+    });
+  }
+
+  async updateOnchainActor(input: UpdateOnchainActorInput): Promise<{ status: "updated"; item: OnchainActor }> {
+    this.requireAPIKey("updateOnchainActor");
+    const actorId = input.actorId?.trim() ?? "";
+    if (!actorId) {
+      throw new Error("updateOnchainActor requires a non-empty actorId");
+    }
+    const payload = normalizeOnchainActorInput("updateOnchainActor", input);
+    return this.request(`/onchain/actors/${encodeURIComponent(payload.projectId)}/${encodeURIComponent(actorId)}`, {
+      method: "PUT",
+      body: JSON.stringify(payload.body)
+    });
+  }
+
+  async deleteOnchainActor(projectId: string, actorId: string): Promise<{ status: "deleted" }> {
+    this.requireAPIKey("deleteOnchainActor");
+    const trimmedProjectID = projectId.trim();
+    const trimmedActorID = actorId.trim();
+    if (!trimmedProjectID) {
+      throw new Error("deleteOnchainActor requires a non-empty projectId");
+    }
+    if (!trimmedActorID) {
+      throw new Error("deleteOnchainActor requires a non-empty actorId");
+    }
+    return this.request(`/onchain/actors/${encodeURIComponent(trimmedProjectID)}/${encodeURIComponent(trimmedActorID)}`, {
+      method: "DELETE"
+    });
+  }
+
+  async registerOnchainActor(
+    actor: CreateOnchainActorInput,
+    options?: { keyId?: string; signerAddress?: string }
+  ): Promise<{ actor: OnchainActor; key?: OnchainAccountKey }> {
+    const created = await this.createOnchainActor(actor);
+    if (!options?.signerAddress?.trim()) {
+      return { actor: created.item };
+    }
+
+    const key = await this.upsertOnchainAccountKey({
+      account: created.item.accountAddress,
+      keyId: options.keyId,
+      signerAddress: options.signerAddress
+    });
+    return { actor: created.item, key: key.item };
   }
 
   private requireAPIKey(methodName: string): void {
@@ -622,6 +953,336 @@ export class Beav3r {
     }
     return body;
   }
+}
+
+export function computeOnchainActionHash(input: Pick<OnchainAuthorizeActionInput, "account" | "to" | "value" | "data" | "chainId" | "nonce" | "expiresAt" | "executor">): string {
+  const account = normalizeAddress(input.account, "computeOnchainActionHash account");
+  const to = normalizeAddress(input.to, "computeOnchainActionHash to");
+  const executor = normalizeAddress(input.executor, "computeOnchainActionHash executor");
+  const value = parseUintString(input.value, "computeOnchainActionHash value");
+  const chainID = parseUintLike(input.chainId, "computeOnchainActionHash chainId");
+  const nonce = parseUintLike(input.nonce, "computeOnchainActionHash nonce");
+  const expiresAt = parseUintLike(input.expiresAt ?? 0, "computeOnchainActionHash expiresAt");
+  const data = normalizeHex(input.data, "computeOnchainActionHash data");
+
+  return hexlify(
+    keccak256Bytes(
+      concatBytes(
+        wordFromAddress(account),
+        wordFromAddress(to),
+        wordFromBigInt(value),
+        keccak256Bytes(hexToBytes(data)),
+        wordFromBigInt(chainID),
+        wordFromBigInt(nonce),
+        wordFromBigInt(expiresAt),
+        wordFromAddress(executor)
+      )
+    )
+  );
+}
+
+export function computeOnchainAuthorizationDigest(artifact: OnchainAuthorizationArtifact): string {
+  const actionHash = normalizeBytes32(artifact.payload.actionHash, "computeOnchainAuthorizationDigest actionHash");
+  const account = normalizeAddress(artifact.payload.account, "computeOnchainAuthorizationDigest account");
+  const executor = normalizeAddress(artifact.payload.executor, "computeOnchainAuthorizationDigest executor");
+  const chainID = parseUintLike(artifact.payload.chainId, "computeOnchainAuthorizationDigest chainId");
+  const nonce = parseUintLike(artifact.payload.nonce, "computeOnchainAuthorizationDigest nonce");
+  const expiresAt = parseUintLike(artifact.payload.expiresAt, "computeOnchainAuthorizationDigest expiresAt");
+  const keyID = normalizeNonEmptyString(artifact.payload.keyId, "computeOnchainAuthorizationDigest keyId");
+
+  const domainTypeHash = keccak256Bytes(utf8Bytes("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"));
+  const authTypeHash = keccak256Bytes(utf8Bytes("ExecutionAuthorization(bytes32 actionHash,address account,address executor,uint256 chainId,uint256 nonce,uint256 expiresAt,bytes32 keyId)"));
+  const domainNameHash = keccak256Bytes(utf8Bytes("Beav3rExecutionAuthorization"));
+  const domainVersionHash = keccak256Bytes(utf8Bytes("1"));
+  const keyIDHash = keccak256Bytes(utf8Bytes(keyID));
+
+  const domainSeparator = keccak256Bytes(
+    concatBytes(
+      domainTypeHash,
+      domainNameHash,
+      domainVersionHash,
+      wordFromBigInt(chainID),
+      wordFromAddress(executor)
+    )
+  );
+
+  const structHash = keccak256Bytes(
+    concatBytes(
+      authTypeHash,
+      hexToBytes(actionHash),
+      wordFromAddress(account),
+      wordFromAddress(executor),
+      wordFromBigInt(chainID),
+      wordFromBigInt(nonce),
+      wordFromBigInt(expiresAt),
+      keyIDHash
+    )
+  );
+
+  return hexlify(keccak256Bytes(concatBytes(new Uint8Array([0x19, 0x01]), domainSeparator, structHash)));
+}
+
+export function verifyOnchainAuthorization(input: VerifyOnchainAuthorizationInput): {
+  actionHash: string;
+  digest: string;
+} {
+  const actionHash = computeOnchainActionHash({
+    ...input.request,
+    expiresAt: input.artifact.payload.expiresAt
+  });
+  if (normalizeBytes32(input.artifact.payload.actionHash, "verifyOnchainAuthorization artifact.payload.actionHash") !== actionHash) {
+    throw new Error("Onchain authorization actionHash mismatch");
+  }
+
+  const digest = computeOnchainAuthorizationDigest(input.artifact);
+  if (normalizeBytes32(input.artifact.digest, "verifyOnchainAuthorization artifact.digest") !== digest) {
+    throw new Error("Onchain authorization digest mismatch");
+  }
+
+  return { actionHash, digest };
+}
+
+export function prepareExecuteWithAuthCall(
+  request: Pick<OnchainAuthorizeActionInput, "to" | "value" | "data">,
+  artifact: OnchainAuthorizationArtifact
+): PreparedExecuteWithAuthCall {
+  const to = normalizeAddress(request.to, "prepareExecuteWithAuthCall to");
+  const value = parseUintString(request.value, "prepareExecuteWithAuthCall value");
+  const data = normalizeHex(request.data, "prepareExecuteWithAuthCall data");
+
+  const signature = normalizeHex(artifact.signature, "prepareExecuteWithAuthCall signature");
+  const actionHash = normalizeBytes32(artifact.payload.actionHash, "prepareExecuteWithAuthCall actionHash");
+  const account = normalizeAddress(artifact.payload.account, "prepareExecuteWithAuthCall account");
+  const executor = normalizeAddress(artifact.payload.executor, "prepareExecuteWithAuthCall executor");
+  const chainID = parseUintLike(artifact.payload.chainId, "prepareExecuteWithAuthCall chainId");
+  const nonce = parseUintLike(artifact.payload.nonce, "prepareExecuteWithAuthCall nonce");
+  const expiresAt = parseUintLike(artifact.payload.expiresAt, "prepareExecuteWithAuthCall expiresAt");
+  const keyId = hexlify(keccak256Bytes(utf8Bytes(normalizeNonEmptyString(artifact.payload.keyId, "prepareExecuteWithAuthCall keyId"))));
+
+  return {
+    to,
+    value,
+    data,
+    auth: {
+      actionHash,
+      account,
+      executor,
+      chainId: chainID,
+      nonce,
+      expiresAt,
+      keyId
+    },
+    signature
+  };
+}
+
+export function encodeExecuteWithAuthCalldata(input: PreparedExecuteWithAuthCall): string {
+  const selector = hexlify(keccak256Bytes(utf8Bytes("executeWithAuth(address,uint256,bytes,(bytes32,address,address,uint256,uint256,uint256,bytes32),bytes)"))).slice(0, 10);
+  const dataBytes = hexToBytes(normalizeHex(input.data, "encodeExecuteWithAuthCalldata data"));
+  const signatureBytes = hexToBytes(normalizeHex(input.signature, "encodeExecuteWithAuthCalldata signature"));
+
+  const staticWords = 11n;
+  const staticLength = staticWords * 32n;
+  const dataOffset = staticLength;
+  const dataTail = encodeDynamicBytes(dataBytes);
+  const signatureOffset = staticLength + BigInt(dataTail.length);
+  const signatureTail = encodeDynamicBytes(signatureBytes);
+
+  const args = concatBytes(
+    wordFromAddress(input.to),
+    wordFromBigInt(input.value),
+    wordFromBigInt(dataOffset),
+    hexToBytes(normalizeBytes32(input.auth.actionHash, "encodeExecuteWithAuthCalldata auth.actionHash")),
+    wordFromAddress(input.auth.account),
+    wordFromAddress(input.auth.executor),
+    wordFromBigInt(input.auth.chainId),
+    wordFromBigInt(input.auth.nonce),
+    wordFromBigInt(input.auth.expiresAt),
+    hexToBytes(normalizeBytes32(input.auth.keyId, "encodeExecuteWithAuthCalldata auth.keyId")),
+    wordFromBigInt(signatureOffset),
+    dataTail,
+    signatureTail
+  );
+
+  return `${selector}${toHexNoPrefix(args)}`;
+}
+
+export function prepareOnchainExecution(input: PrepareOnchainExecutionInput): PreparedExecuteWithAuthCall & { calldata: string } {
+  verifyOnchainAuthorization({
+    artifact: input.artifact,
+    request: {
+      account: input.actor.accountAddress,
+      to: input.action.to,
+      value: input.action.value,
+      data: input.action.data,
+      chainId: input.actor.chainId,
+      nonce: input.action.nonce,
+      executor: input.actor.executorAddress
+    }
+  });
+  const call = prepareExecuteWithAuthCall(input.action, input.artifact);
+  return {
+    ...call,
+    calldata: encodeExecuteWithAuthCalldata(call)
+  };
+}
+
+function normalizeOnchainActorInput(
+  methodName: string,
+  input: CreateOnchainActorInput | UpdateOnchainActorInput
+): {
+  projectId: string;
+  body: {
+    type: OnchainActorType;
+    label: string;
+    chainId: number;
+    accountAddress: string;
+    executorAddress: string;
+    metadataJson: string;
+  };
+} {
+  const projectId = input.projectId?.trim() ?? "";
+  const type = input.type?.trim() as OnchainActorType;
+  const label = input.label?.trim() ?? "";
+  const accountAddress = normalizeAddress(input.accountAddress, `${methodName} accountAddress`);
+  const executorAddress = normalizeAddress(input.executorAddress, `${methodName} executorAddress`);
+  const metadataJson = input.metadataJson?.trim() || "{}";
+
+  if (!projectId) {
+    throw new Error(`${methodName} requires a non-empty projectId`);
+  }
+  if (type !== "wallet" && type !== "smart_account") {
+    throw new Error(`${methodName} requires type \"wallet\" or \"smart_account\"`);
+  }
+  if (!label) {
+    throw new Error(`${methodName} requires a non-empty label`);
+  }
+  if (!Number.isFinite(input.chainId) || input.chainId <= 0) {
+    throw new Error(`${methodName} requires chainId > 0`);
+  }
+
+  return {
+    projectId,
+    body: {
+      type,
+      label,
+      chainId: input.chainId,
+      accountAddress,
+      executorAddress,
+      metadataJson
+    }
+  };
+}
+
+function parseUintString(value: string, field: string): bigint {
+  const text = normalizeNonEmptyString(value, field);
+  if (!/^\d+$/.test(text)) {
+    throw new Error(`${field} must be a base-10 unsigned integer string`);
+  }
+  return BigInt(text);
+}
+
+function parseUintLike(value: string | number | bigint, field: string): bigint {
+  if (typeof value === "bigint") {
+    if (value < 0n) {
+      throw new Error(`${field} must be >= 0`);
+    }
+    return value;
+  }
+  if (typeof value === "number") {
+    if (!Number.isFinite(value) || !Number.isInteger(value) || value < 0) {
+      throw new Error(`${field} must be a non-negative integer`);
+    }
+    return BigInt(value);
+  }
+  return parseUintString(value, field);
+}
+
+function normalizeNonEmptyString(value: string, field: string): string {
+  const text = value?.trim();
+  if (!text) {
+    throw new Error(`${field} is required`);
+  }
+  return text;
+}
+
+function normalizeHex(value: string, field: string): string {
+  const text = normalizeNonEmptyString(value, field).toLowerCase();
+  if (!/^0x[0-9a-f]*$/.test(text)) {
+    throw new Error(`${field} must be a valid 0x-prefixed hex string`);
+  }
+  if ((text.length - 2) % 2 !== 0) {
+    throw new Error(`${field} must contain an even number of hex characters`);
+  }
+  return text;
+}
+
+function normalizeBytes32(value: string, field: string): string {
+  const text = normalizeHex(value, field);
+  if (text.length !== 66) {
+    throw new Error(`${field} must be a 32-byte hex string`);
+  }
+  return text;
+}
+
+function normalizeAddress(value: string, field: string): string {
+  const text = normalizeHex(value, field);
+  if (text.length !== 42) {
+    throw new Error(`${field} must be a 20-byte address`);
+  }
+  return text;
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  return Uint8Array.from(Buffer.from(hex.slice(2), "hex"));
+}
+
+function utf8Bytes(value: string): Uint8Array {
+  return Uint8Array.from(Buffer.from(value, "utf8"));
+}
+
+function hexlify(bytes: Uint8Array): string {
+  return `0x${toHexNoPrefix(bytes)}`;
+}
+
+function toHexNoPrefix(bytes: Uint8Array): string {
+  return Buffer.from(bytes).toString("hex");
+}
+
+function keccak256Bytes(data: Uint8Array): Uint8Array {
+  return Uint8Array.from(keccak_256(data));
+}
+
+function concatBytes(...parts: Uint8Array[]): Uint8Array {
+  const totalLength = parts.reduce((sum, item) => sum + item.length, 0);
+  const output = new Uint8Array(totalLength);
+  let offset = 0;
+  for (const item of parts) {
+    output.set(item, offset);
+    offset += item.length;
+  }
+  return output;
+}
+
+function wordFromBigInt(value: bigint): Uint8Array {
+  if (value < 0n) {
+    throw new Error("wordFromBigInt value must be non-negative");
+  }
+  const max = (1n << 256n) - 1n;
+  if (value > max) {
+    throw new Error("wordFromBigInt value exceeds uint256 range");
+  }
+  return hexToBytes(`0x${value.toString(16).padStart(64, "0")}`);
+}
+
+function wordFromAddress(address: string): Uint8Array {
+  return hexToBytes(`0x${normalizeAddress(address, "address").slice(2).padStart(64, "0")}`);
+}
+
+function encodeDynamicBytes(value: Uint8Array): Uint8Array {
+  const lengthWord = wordFromBigInt(BigInt(value.length));
+  const padLength = (32 - (value.length % 32)) % 32;
+  return concatBytes(lengthWord, value, new Uint8Array(padLength));
 }
 
 export function toExactActionRequest(action: ActionRequest | ActionRecord): ActionRequest {

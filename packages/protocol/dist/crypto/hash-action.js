@@ -1,7 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.hashAction = hashAction;
-const node_crypto_1 = require("node:crypto");
+const sha2_1 = require("@noble/hashes/sha2");
+const utils_1 = require("@noble/hashes/utils");
 const canonicalize_1 = require("./canonicalize");
 function hashAction(action) {
     const canonicalPayload = (0, canonicalize_1.canonicalize)(action.payload);
@@ -16,6 +17,6 @@ function hashAction(action) {
         action.nonce,
         String(action.expiry)
     ].join("");
-    return (0, node_crypto_1.createHash)("sha256").update(input, "utf8").digest("hex");
+    return (0, utils_1.bytesToHex)((0, sha2_1.sha256)((0, utils_1.utf8ToBytes)(input)));
 }
 //# sourceMappingURL=hash-action.js.map

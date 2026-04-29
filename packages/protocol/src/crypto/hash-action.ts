@@ -1,4 +1,5 @@
-import { createHash } from "node:crypto";
+import { sha256 } from "@noble/hashes/sha2";
+import { bytesToHex, utf8ToBytes } from "@noble/hashes/utils";
 
 import type { ActionRequest } from "../models/action-request";
 import { canonicalize } from "./canonicalize";
@@ -17,5 +18,5 @@ export function hashAction(action: ActionRequest): string {
     String(action.expiry)
   ].join("");
 
-  return createHash("sha256").update(input, "utf8").digest("hex");
+  return bytesToHex(sha256(utf8ToBytes(input)));
 }
