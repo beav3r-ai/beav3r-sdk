@@ -1,5 +1,13 @@
 # @beav3r/sdk
 
+## 2.1.0-beta.2
+
+### Patch Changes
+
+- Republish RN-safe hashing updates for mobile APK build validation.
+- Updated dependencies
+  - @beav3r/protocol@2.0.1-beta.1
+
 ## 2.1.0-beta.1
 
 ### Patch Changes
