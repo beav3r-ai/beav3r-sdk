@@ -183,19 +183,41 @@ export type ActionRecord = ActionRequest & {
     reason?: string;
     evaluation: ActionEvaluation;
 };
+type UintLike = string | number | bigint;
 export type OnchainAuthorizeActionInput = {
     account: string;
     to: string;
     value: string;
     data: string;
-    chainId: number;
-    nonce: number;
-    expiresAt?: number;
+    chainId: UintLike;
+    nonce: UintLike;
+    expiresAt?: UintLike;
     executor: string;
     projectId?: string;
     actorId?: string;
 };
 export type OnchainActorType = "wallet" | "smart_account";
+export type ProvisionOnchainUserInput = {
+    chainId: number;
+    intendedOwner: string;
+    templateId?: string;
+    metadata?: Record<string, unknown>;
+};
+export type ProvisionOnchainUserResult = {
+    status: "provisioning_requested";
+    item: {
+        provisionedUserId: string;
+        actorId: string;
+        accountAddress: string;
+        executorAddress: string;
+        provisionTxHash: string;
+        registryAddress: string;
+        verifierAddress: string;
+        factoryAddress: string;
+        chainId: number;
+        status: "provisioned";
+    };
+};
 export type OnchainActor = {
     id: string;
     projectId: string;
@@ -232,9 +254,9 @@ export type OnchainAuthorizationPayload = {
     actionHash: string;
     account: string;
     executor: string;
-    chainId: number;
-    nonce: number;
-    expiresAt: number;
+    chainId: UintLike;
+    nonce: UintLike;
+    expiresAt: UintLike;
     keyId: string;
 };
 export type OnchainAuthorizationArtifact = {
@@ -258,9 +280,9 @@ export type OnchainAuthorizationRecord = {
         to: string;
         value: string;
         data: string;
-        chainId: number;
-        nonce: number;
-        expiresAt: number;
+        chainId: UintLike;
+        nonce: UintLike;
+        expiresAt: UintLike;
         executor: string;
     };
     artifact: OnchainAuthorizationArtifact;
@@ -325,6 +347,11 @@ export declare class Beav3r {
         status: "authorized";
         item: OnchainAuthorizationRecord;
     }>;
+    /**
+     * Provisions an onchain user profile via `POST /v1/onchain/users/provision`.
+     * The request shape intentionally excludes `projectId`; project scoping is resolved server-side.
+     */
+    provisionOnchainUser(input: ProvisionOnchainUserInput): Promise<ProvisionOnchainUserResult>;
     getOnchainAuthorization(authorizationId: string, options?: {
         projectId?: string;
     }): Promise<{

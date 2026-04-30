@@ -61,6 +61,52 @@ test("getOnchainAuthorization sends GET /onchain/actions/{id}", async () => {
   assert.equal(calls[0], "http://localhost:3000/onchain/actions/onchain_auth_1");
 });
 
+test("provisionOnchainUser sends POST /v1/onchain/users/provision without projectId", async () => {
+  const calls = [];
+  const client = new Beav3r({
+    baseUrl: "http://localhost:3000",
+    apiKey: "key_test",
+    fetchImpl: async (url, init) => {
+      calls.push({ url, init });
+      return jsonResponse(200, {
+        status: "provisioning_requested",
+        item: {
+          provisionedUserId: "onchain_user_1",
+          actorId: "api_key_123",
+          accountAddress: "0x1111111111111111111111111111111111111111",
+          executorAddress: "0x2222222222222222222222222222222222222222",
+          provisionTxHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          registryAddress: "0x3333333333333333333333333333333333333333",
+          verifierAddress: "0x4444444444444444444444444444444444444444",
+          factoryAddress: "0x5555555555555555555555555555555555555555",
+          chainId: 8453,
+          status: "provisioned"
+        }
+      });
+    }
+  });
+
+  const res = await client.provisionOnchainUser({
+    chainId: 8453,
+    intendedOwner: "0x1111111111111111111111111111111111111111",
+    templateId: "template_a",
+    metadata: { tier: "gold" }
+  });
+
+  assert.equal(res.status, "provisioning_requested");
+  assert.equal(res.item.provisionedUserId, "onchain_user_1");
+  assert.equal(res.item.status, "provisioned");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, "http://localhost:3000/v1/onchain/users/provision");
+  assert.equal(calls[0].init.method, "POST");
+  const payload = JSON.parse(calls[0].init.body);
+  assert.equal(payload.chainId, 8453);
+  assert.equal(payload.intendedOwner, "0x1111111111111111111111111111111111111111");
+  assert.equal(payload.templateId, "template_a");
+  assert.deepEqual(payload.metadata, { tier: "gold" });
+  assert.equal("projectId" in payload, false);
+});
+
 test("onchain account key helpers hit expected endpoints", async () => {
   const calls = [];
   const client = new Beav3r({

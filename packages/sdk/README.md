@@ -188,6 +188,27 @@ verifyOnchainAuthorization({
 const calldata = prepared.calldata;
 ```
 
+For local Anvil provisioning via the server `POST /v1/onchain/users/provision` path:
+
+```ts
+import { Beav3r } from "@beav3r/sdk";
+
+const client = new Beav3r({
+  baseUrl: "http://127.0.0.1:3000",
+  apiKey: process.env.BEAV3R_API_KEY!
+});
+
+const provisioned = await client.provisionOnchainUser({
+  chainId: 31337,
+  intendedOwner: "0xYourOwnerAddress"
+});
+
+console.log(provisioned.item.executorAddress);
+console.log(provisioned.item.provisionTxHash);
+```
+
+Your API key must include `onchain.users:write` (or `onchain:manage`).
+
 ## Compatibility note
 
 As of the 2026-04-03 security hardening pass:

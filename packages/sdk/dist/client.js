@@ -164,12 +164,12 @@ class Beav3r {
         if (!input.data?.trim()) {
             throw new Error("authorizeOnchainAction requires non-empty calldata");
         }
-        if (!Number.isFinite(input.chainId) || input.chainId <= 0) {
+        const chainId = parseUintLike(input.chainId, "authorizeOnchainAction chainId");
+        if (chainId <= 0n) {
             throw new Error("authorizeOnchainAction requires chainId > 0");
         }
-        if (!Number.isFinite(input.nonce) || input.nonce < 0) {
-            throw new Error("authorizeOnchainAction requires nonce >= 0");
-        }
+        const nonce = parseUintLike(input.nonce, "authorizeOnchainAction nonce");
+        const expiresAt = parseUintLike(input.expiresAt ?? 0n, "authorizeOnchainAction expiresAt");
         if (!input.executor?.trim()) {
             throw new Error("authorizeOnchainAction requires a non-empty executor address");
         }
@@ -181,10 +181,39 @@ class Beav3r {
                 to: input.to.trim(),
                 value: input.value.trim(),
                 data: input.data.trim(),
-                chainId: input.chainId,
-                nonce: input.nonce,
-                expiresAt: input.expiresAt ?? 0,
+                chainId: toSafeJSONUint(chainId, "authorizeOnchainAction chainId"),
+                nonce: toSafeJSONUint(nonce, "authorizeOnchainAction nonce"),
+                expiresAt: toSafeJSONUint(expiresAt, "authorizeOnchainAction expiresAt"),
                 executor: input.executor.trim()
+            })
+        });
+    }
+    /**
+     * Provisions an onchain user profile via `POST /v1/onchain/users/provision`.
+     * The request shape intentionally excludes `projectId`; project scoping is resolved server-side.
+     */
+    async provisionOnchainUser(input) {
+        this.requireAPIKey("provisionOnchainUser");
+        if (!Number.isFinite(input.chainId) || input.chainId <= 0) {
+            throw new Error("provisionOnchainUser requires chainId > 0");
+        }
+        if (!input.intendedOwner?.trim()) {
+            throw new Error("provisionOnchainUser requires a non-empty intendedOwner");
+        }
+        const templateId = input.templateId?.trim();
+        if (typeof input.templateId !== "undefined" && !templateId) {
+            throw new Error("provisionOnchainUser templateId must be non-empty when provided");
+        }
+        if (typeof input.metadata !== "undefined" && (input.metadata === null || Array.isArray(input.metadata))) {
+            throw new Error("provisionOnchainUser metadata must be an object when provided");
+        }
+        return this.request("/v1/onchain/users/provision", {
+            method: "POST",
+            body: JSON.stringify({
+                chainId: input.chainId,
+                intendedOwner: input.intendedOwner.trim(),
+                ...(templateId ? { templateId } : {}),
+                ...(typeof input.metadata !== "undefined" ? { metadata: input.metadata } : {})
             })
         });
     }
@@ -554,12 +583,12 @@ function computeOnchainAuthorizationDigest(artifact) {
     const chainID = parseUintLike(artifact.payload.chainId, "computeOnchainAuthorizationDigest chainId");
     const nonce = parseUintLike(artifact.payload.nonce, "computeOnchainAuthorizationDigest nonce");
     const expiresAt = parseUintLike(artifact.payload.expiresAt, "computeOnchainAuthorizationDigest expiresAt");
-    const keyID = normalizeNonEmptyString(artifact.payload.keyId, "computeOnchainAuthorizationDigest keyId");
+    const keyID = normalizeOnchainKeyId(artifact.payload.keyId, "computeOnchainAuthorizationDigest keyId");
     const domainTypeHash = keccak256Bytes(utf8Bytes("EIP712Domain(string name,string version,uint256 chainId,address verifyingContract)"));
     const authTypeHash = keccak256Bytes(utf8Bytes("ExecutionAuthorization(bytes32 actionHash,address account,address executor,uint256 chainId,uint256 nonce,uint256 expiresAt,bytes32 keyId)"));
     const domainNameHash = keccak256Bytes(utf8Bytes("Beav3rExecutionAuthorization"));
     const domainVersionHash = keccak256Bytes(utf8Bytes("1"));
-    const keyIDHash = keccak256Bytes(utf8Bytes(keyID));
+    const keyIDHash = normalizeBytes32OrHashKeyId(keyID);
     const domainSeparator = keccak256Bytes(concatBytes(domainTypeHash, domainNameHash, domainVersionHash, wordFromBigInt(chainID), wordFromAddress(executor)));
     const structHash = keccak256Bytes(concatBytes(authTypeHash, hexToBytes(actionHash), wordFromAddress(account), wordFromAddress(executor), wordFromBigInt(chainID), wordFromBigInt(nonce), wordFromBigInt(expiresAt), keyIDHash));
     return hexlify(keccak256Bytes(concatBytes(new Uint8Array([0x19, 0x01]), domainSeparator, structHash)));
@@ -589,7 +618,7 @@ function prepareExecuteWithAuthCall(request, artifact) {
     const chainID = parseUintLike(artifact.payload.chainId, "prepareExecuteWithAuthCall chainId");
     const nonce = parseUintLike(artifact.payload.nonce, "prepareExecuteWithAuthCall nonce");
     const expiresAt = parseUintLike(artifact.payload.expiresAt, "prepareExecuteWithAuthCall expiresAt");
-    const keyId = hexlify(keccak256Bytes(utf8Bytes(normalizeNonEmptyString(artifact.payload.keyId, "prepareExecuteWithAuthCall keyId"))));
+    const keyId = hexlify(normalizeBytes32OrHashKeyId(normalizeOnchainKeyId(artifact.payload.keyId, "prepareExecuteWithAuthCall keyId")));
     return {
         to,
         value,
@@ -690,6 +719,21 @@ function parseUintLike(value, field) {
         return BigInt(value);
     }
     return parseUintString(value, field);
+}
+function toSafeJSONUint(value, field) {
+    if (value > BigInt(Number.MAX_SAFE_INTEGER)) {
+        throw new Error(`${field} exceeds Number.MAX_SAFE_INTEGER and cannot be encoded in JSON number safely`);
+    }
+    return Number(value);
+}
+function normalizeOnchainKeyId(value, field) {
+    return normalizeNonEmptyString(value, field);
+}
+function normalizeBytes32OrHashKeyId(keyId) {
+    if (/^0x[0-9a-f]{64}$/i.test(keyId)) {
+        return hexToBytes(keyId.toLowerCase());
+    }
+    return keccak256Bytes(utf8Bytes(keyId));
 }
 function normalizeNonEmptyString(value, field) {
     const text = value?.trim();

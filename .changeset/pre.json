@@ -8,6 +8,7 @@
   "changesets": [
     "late-chefs-retire",
     "onchain-rn-crypto-fix",
-    "rn-crypto-followup"
+    "rn-crypto-followup",
+    "sdk-onchain-bigint-web-route-fix"
   ]
 }
