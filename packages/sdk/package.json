@@ -1,6 +1,6 @@
 {
   "name": "@beav3r/sdk",
-  "version": "2.1.0-beta.4",
+  "version": "2.1.0",
   "description": "Beav3r client SDK for guarding autonomous agent actions.",
   "license": "MIT",
   "private": false,
@@ -21,6 +21,7 @@
   "sideEffects": false,
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "test": "node --test tests/*.test.js",
     "prepack": "npm run build"
   },
   "publishConfig": {

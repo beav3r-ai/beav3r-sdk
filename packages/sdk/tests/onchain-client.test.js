@@ -78,7 +78,6 @@ test("provisionOnchainUser sends POST /v1/onchain/users/provision without projec
           provisionTxHash: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
           registryAddress: "0x3333333333333333333333333333333333333333",
           verifierAddress: "0x4444444444444444444444444444444444444444",
-          factoryAddress: "0x5555555555555555555555555555555555555555",
           chainId: 8453,
           status: "provisioned"
         }

@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "protocolVersion": "onchain-v1",
+  "vectors": [
+    {
+      "name": "basic_call_v1",
+      "description": "Canonical onchain-v1 authorization for a value-free target call with 0x1234 calldata.",
+      "privateKey": "0x4f3edf983ac636a65a842ce7c78d9aa706d3b113bce036f4f5c5822d9b5314a4",
+      "signerAddress": "0x41593026C8ca39061d80cAb9B7Cea110Cd636979",
+      "request": {
+        "account": "0x1111111111111111111111111111111111111111",
+        "to": "0x2222222222222222222222222222222222222222",
+        "value": "0",
+        "data": "0x1234",
+        "chainId": 8453,
+        "nonce": 7,
+        "expiresAt": 2000000000,
+        "executor": "0x3333333333333333333333333333333333333333"
+      },
+      "artifact": {
+        "authorizationId": "onchain_auth_vector_basic_call_v1",
+        "payload": {
+          "version": "onchain-v1",
+          "actionHash": "0x2bfcf32f0d8d446ceacfe8eba3a62314be3cc7be727a36b9d1891f0a59cf1bac",
+          "account": "0x1111111111111111111111111111111111111111",
+          "executor": "0x3333333333333333333333333333333333333333",
+          "chainId": 8453,
+          "nonce": 7,
+          "expiresAt": 2000000000,
+          "keyId": "beav3r-server"
+        },
+        "signature": "0x83ee920afe2042db9116023af88551b236afecfe940538ee852d40a1f052a9d55cbf26518c714b4723eb9962f61293b726a907618fcf75348babb1712127812f1b",
+        "digest": "0xd632385489de30b60943643a61b4d10fb817d0c11731bb66cfc88fb124c8c990",
+        "signerAddress": "0x41593026C8ca39061d80cAb9B7Cea110Cd636979"
+      },
+      "expected": {
+        "dataHash": "0x56570de287d73cd1cb6092bb8fdee6173974955fdef345ae579ee9f475ea7432",
+        "keyIdHash": "0xc0a519181ebce88c23df21a2aac863abadd050986786e119de969027f6a003ed",
+        "domainTypeHash": "0x8b73c3c69bb8fe3d512ecc4cf759cc79239f7b179b0ffacaa9a75d522b39400f",
+        "authorizationTypeHash": "0x2518d2f841d591e1c1f6fa5450309cc09de722f80d8b6f2faa862c93a4af4a42",
+        "domainNameHash": "0x255e372d0701a0024b196538715854a14f018f9438452824f129fe42b1a798f7",
+        "domainVersionHash": "0xc89efdaa54c0f20c7adf612882df0950f5a951637e0307cdcb4c672f298b8bc6",
+        "domainSeparator": "0xf3965762bad5c35b806fec6666fc174d084626904259da28bfed604b2786914f",
+        "structHash": "0x1246385bc03d461ae397b4ef2d7ea01aea5ca8f024cb2b32361d97a90c25085f",
+        "actionHash": "0x2bfcf32f0d8d446ceacfe8eba3a62314be3cc7be727a36b9d1891f0a59cf1bac",
+        "digest": "0xd632385489de30b60943643a61b4d10fb817d0c11731bb66cfc88fb124c8c990"
+      }
+    }
+  ]
+}

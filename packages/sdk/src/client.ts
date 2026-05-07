@@ -205,14 +205,15 @@ export type ProvisionOnchainUserInput = {
 export type ProvisionOnchainUserResult = {
   status: "provisioning_requested";
   item: {
-    provisionedUserId: string;
+    provisionRequestId: string;
+    /** @deprecated Use `provisionRequestId`. */
+    provisionedUserId?: string;
     actorId: string;
     accountAddress: string;
     executorAddress: string;
     provisionTxHash: string;
     registryAddress: string;
     verifierAddress: string;
-    factoryAddress: string;
     chainId: number;
     status: "provisioned";
   };

@@ -1,5 +1,11 @@
 # @beav3r/sdk
 
+## 2.1.0
+
+### Patch Changes
+
+- Align onchain provisioning response typing with the simplified server payload by removing the `factoryAddress` field.
+
 ## 2.1.0-beta.4
 
 ### Patch Changes
@@ -11,7 +17,7 @@
 ### Patch Changes
 
 - Add `provisionOnchainUser(...)` client method for `POST /v1/onchain/users/provision`.
-- Align onchain provisioning response typing with server payload (`provisionedUserId`, `actorId`, `executorAddress`, `provisionTxHash`, and deployed contract addresses).
+- Align onchain provisioning response typing with server payload (`provisionedUserId`, `actorId`, `executorAddress`, `provisionTxHash`, and verifier contract addresses).
 
 ## 2.1.0-beta.2
 
